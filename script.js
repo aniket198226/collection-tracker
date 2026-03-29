@@ -330,28 +330,33 @@ async function loadAY() {
 // LOAD & PROCESS — RECON TAB
 // ─────────────────────────────────────────────────────────
 async function loadRECON() {
-  await delay(800); // stagger requests so browser doesn't block simultaneous JSONP
+  await delay(800);
   const table = await fetchGviz({ sheet: 'RECON', headers: 1 });
   debugLog.push(`\n✓ RECON tab fetched — ${table.cols.length} cols, ${(table.rows||[]).length} rows`);
 
   const colLabels = table.cols.map(c => (c.label || c.id || '').trim());
-  debugLog.push(`RECON column labels (all): ${colLabels.join(' | ')}`);
+  debugLog.push(`RECON column labels: ${colLabels.join(' | ')}`);
 
-  // Find column indices
-  const findCol = (keywords) => {
-    for (const kw of keywords) {
-      const idx = colLabels.findIndex(l => l.includes(kw));
-      if (idx >= 0) return idx;
-    }
-    return -1;
-  };
+  // Fixed column positions (1-indexed Excel → 0-indexed JS)
+  // Col B (2)  = Sale Year
+  // Col C (3)  = School ID
+  // Col J (10) = Amount collected
+  // Col K (11) = Collection date
+  // Col S (19) = Status (only include rows where value = "received")
+  const yearIdx   = CFG.RECON.SALE_YEAR - 1;  // B → 1
+  const schoolIdx = CFG.RECON.SCHOOL_ID - 1;  // C → 2
+  const amtIdx    = 9;   // J → index 9
+  const dateIdx   = 10;  // K → index 10
+  const statusIdx = 18;  // S → index 18
 
-  const yearIdx   = findCol(['sale year', 'year'])           >= 0 ? findCol(['sale year', 'year'])   : CFG.RECON.SALE_YEAR - 1;
-  const schoolIdx = findCol(['school id', 'sap', 'sapid'])   >= 0 ? findCol(['school id', 'sap'])     : CFG.RECON.SCHOOL_ID - 1;
-  const dateIdx   = findCol(['collection date', 'date of collection', 'receipt date', 'date']);
-  const amtIdx    = findCol(['amount collected', 'collection amount', 'amount', 'receipt amount']);
+  debugLog.push(`RECON fixed cols → year:${yearIdx} school:${schoolIdx} amount(J):${amtIdx} date(K):${dateIdx} status(S):${statusIdx}`);
 
-  debugLog.push(`RECON mapped → year:${yearIdx} school:${schoolIdx} date:${dateIdx} amount:${amtIdx}`);
+  // Log first data row for verification
+  if (table.rows && table.rows.length > 0) {
+    const s = table.rows[0];
+    const preview = (s.c || []).map((c, i) => `[${i}]=${c?.v ?? 'null'}`).join('  ');
+    debugLog.push(`RECON row[0] preview: ${preview}`);
+  }
 
   const result = [];
   for (const row of (table.rows || [])) {
@@ -363,24 +368,24 @@ async function loadRECON() {
       return v !== null && v !== undefined ? String(v).trim() : '';
     };
 
+    // Filter: AY 26-27 only
     const saleYear = getCellStr(yearIdx);
-    // Accept "26-27", "2026-27", "2026-2027", "AY 26-27", etc. — or blank (include all if year col not found)
     if (saleYear && !/(26.*27|2026)/.test(saleYear)) continue;
 
+    // Filter: status must be "received" (case-insensitive)
+    const status = getCellStr(statusIdx);
+    if (!status || status.toLowerCase() !== 'received') continue;
+
     const schoolId = getCellStr(schoolIdx);
+    const collDate = parseDate(parseGvizValue(row.c[dateIdx] || {}));
+    const amount   = num(parseGvizValue(row.c[amtIdx] || {}));
 
-    // Collection date
-    const rawDate = dateIdx >= 0 ? parseGvizValue(row.c[dateIdx]) : null;
-    const collDate = parseDate(rawDate);
-
-    // Amount
-    const rawAmt = amtIdx >= 0 ? parseGvizValue(row.c[amtIdx]) : 0;
-    const amount = num(rawAmt);
+    if (!collDate && amount === 0) continue;
 
     result.push({ schoolId, collDate, amount });
   }
 
-  debugLog.push(`RECON rows (26-27): ${result.length}`);
+  debugLog.push(`RECON rows after filter (26-27 + received): ${result.length}`);
   return result;
 }
 
