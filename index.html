@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Collection Tracker Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- LOADING SCREEN -->
+  <div id="loading">
+    <div class="spinner"></div>
+    <p id="loading-msg">Connecting to Google Sheets…</p>
+  </div>
+
+  <!-- MAIN APP -->
+  <div id="app" class="hidden">
+
+    <header>
+      <div class="header-left">
+        <h1>Collection Tracker Dashboard</h1>
+        <span id="last-updated" class="header-meta"></span>
+      </div>
+      <div class="header-right">
+        <button id="refresh-btn" onclick="init()">&#8635; Refresh</button>
+        <button id="debug-toggle" onclick="toggleDebug()">Debug Info</button>
+      </div>
+    </header>
+
+    <!-- DEBUG PANEL (hidden by default) -->
+    <div id="debug-panel" class="hidden">
+      <h4>Column Discovery Report</h4>
+      <pre id="debug-content"></pre>
+    </div>
+
+    <!-- NAVIGATION TABS -->
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="overview">State Overview</button>
+      <button class="tab-btn" data-tab="detailed">Detailed Analysis</button>
+      <button class="tab-btn" data-tab="recent">Recent Collections</button>
+    </nav>
+
+    <!-- ==================== TAB 1: STATE OVERVIEW ==================== -->
+    <section id="tab-overview" class="tab-content active">
+
+      <!-- Overall KPIs -->
+      <div class="section-header">
+        <h2>Overall Summary</h2>
+      </div>
+      <div id="overall-kpis" class="kpi-grid"></div>
+
+      <!-- State-wise Summary -->
+      <div class="section-header">
+        <h2>State-wise Summary</h2>
+        <div class="filter-inline">
+          <label>Filter States:</label>
+          <select id="ov-state-filter" multiple size="5"></select>
+          <div class="btn-group">
+            <button onclick="applyOverviewFilter()">Apply</button>
+            <button class="btn-secondary" onclick="clearOverviewFilter()">Clear</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table id="state-table">
+          <thead>
+            <tr>
+              <th>State</th>
+              <th class="r">Total DV</th>
+              <th class="r">Invoicing Done</th>
+              <th class="r">% Invoiced</th>
+              <th class="r">Collection Done</th>
+              <th class="r">Due Against Invoice</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+          <tfoot></tfoot>
+        </table>
+      </div>
+
+      <!-- Top 10 by State -->
+      <div class="section-header" style="margin-top:32px">
+        <h2>Top 10 Clients by Pending Dues</h2>
+        <div class="filter-inline">
+          <label>State:</label>
+          <select id="top10-state-filter" onchange="renderTop10(this.value)">
+            <option value="ALL">All States</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table id="top10-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>School Name</th>
+              <th>State</th>
+              <th>POC</th>
+              <th class="r">Total DV</th>
+              <th class="r">Invoiced</th>
+              <th class="r">Collected</th>
+              <th class="r">Due Against Invoice</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+    </section>
+
+    <!-- ==================== TAB 2: DETAILED ANALYSIS ==================== -->
+    <section id="tab-detailed" class="tab-content">
+
+      <div class="section-header"><h2>Detailed Analysis</h2></div>
+
+      <!-- Filters -->
+      <div class="filter-panel">
+        <div class="filter-group">
+          <label>State</label>
+          <select id="det-state" multiple size="5"></select>
+        </div>
+        <div class="filter-group">
+          <label>Collection POC</label>
+          <select id="det-poc" multiple size="5"></select>
+        </div>
+        <div class="filter-group">
+          <label>Due Date From</label>
+          <input type="date" id="det-from" />
+        </div>
+        <div class="filter-group">
+          <label>Due Date To</label>
+          <input type="date" id="det-to" />
+        </div>
+        <div class="filter-actions">
+          <button onclick="applyDetailedFilter()">Apply Filters</button>
+          <button class="btn-secondary" onclick="clearDetailedFilter()">Clear</button>
+        </div>
+      </div>
+
+      <!-- KPI Cards -->
+      <div id="det-kpis" class="kpi-grid"></div>
+
+      <!-- Client-wise -->
+      <div class="section-header"><h3>Client-wise Summary</h3></div>
+      <div class="table-wrap">
+        <table id="client-table">
+          <thead>
+            <tr>
+              <th>School Name</th>
+              <th>State</th>
+              <th>POC</th>
+              <th class="r">Total DV</th>
+              <th class="r">Invoiced</th>
+              <th class="r">% Invoiced</th>
+              <th class="r">Collected</th>
+              <th class="r">Due vs Invoice</th>
+              <th class="r">Total Due Till Date</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- POC-wise Aging -->
+      <div class="section-header" style="margin-top:32px"><h3>POC-wise Aging (Overdue Installments)</h3></div>
+      <div class="aging-legend">
+        <span class="badge on-time">Upcoming / On Time</span>
+        <span class="badge warn">1–30 days overdue</span>
+        <span class="badge danger">31–60 days overdue</span>
+        <span class="badge critical">60+ days overdue</span>
+      </div>
+      <div class="table-wrap">
+        <table id="aging-table">
+          <thead>
+            <tr>
+              <th>POC</th>
+              <th>School Name</th>
+              <th>Type</th>
+              <th>Due Date</th>
+              <th class="r">Scheduled Amount</th>
+              <th class="r">Days Overdue</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+    </section>
+
+    <!-- ==================== TAB 3: RECENT COLLECTIONS ==================== -->
+    <section id="tab-recent" class="tab-content">
+
+      <div class="section-header">
+        <h2>Recent Collections — Last 7 Days</h2>
+        <p class="subtitle">Source: RECON tab · AY 26-27 only · Mapped via School ID</p>
+      </div>
+
+      <div class="filter-inline" style="margin-bottom:16px">
+        <label>Filter States:</label>
+        <select id="rec-state-filter" multiple size="5"></select>
+        <div class="btn-group">
+          <button onclick="applyRecentFilter()">Apply</button>
+          <button class="btn-secondary" onclick="clearRecentFilter()">Clear</button>
+        </div>
+      </div>
+
+      <div id="rec-summary" class="kpi-grid" style="margin-bottom:24px"></div>
+
+      <div class="table-wrap">
+        <table id="recent-table">
+          <thead>
+            <tr>
+              <th>Collection Date</th>
+              <th>School Name</th>
+              <th>State</th>
+              <th>POC</th>
+              <th class="r">Amount Collected</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+    </section>
+
+  </div><!-- #app -->
+
+  <script src="script.js"></script>
+</body>
+</html>
