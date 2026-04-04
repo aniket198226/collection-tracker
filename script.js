@@ -211,8 +211,12 @@ async function loadAY() {
   const tqSelect  = selectTQ(selectedCols) + ' limit 10000';
   const tqFull    = 'select * limit 10000';
 
+  // Use headers=2 because the sheet has two header rows:
+  //   Row 1 = column letters (A, B, C…)
+  //   Row 2 = actual column names (Achievement Year, School Type, Total DV…)
+  // With headers=2 gviz uses Row 2 as labels → label-based discovery works correctly.
   try {
-    table = await fetchGviz({ gid: CFG.AY_GID, headers: 1 }, tqSelect);
+    table = await fetchGviz({ gid: CFG.AY_GID, headers: 2 }, tqSelect);
     if (!table || !table.cols || table.cols.length < selectedCols.length - 5) {
       throw new Error(`Expected ~${selectedCols.length} cols, got ${table?.cols?.length}`);
     }
@@ -220,13 +224,15 @@ async function loadAY() {
   } catch (e) {
     debugLog.push(`✗ Targeted select failed: ${e.message} — falling back to full sheet`);
     await delay(600);
-    table = await fetchGviz({ gid: CFG.AY_GID, headers: 1 }, tqFull);
+    table = await fetchGviz({ gid: CFG.AY_GID, headers: 2 }, tqFull);
     useFullSheet = true;
     debugLog.push(`✓ AY full sheet fetched — ${table.cols.length} cols, ${(table.rows||[]).length} rows`);
   }
 
   const colLabels = table.cols.map(c => (c.label || c.id || '').trim());
   debugLog.push(`\nFirst 10 AY column labels: ${colLabels.slice(0, 10).join(' | ')}`);
+  // Show labels around the DV/Collection area to verify column positions
+  debugLog.push(`AY col labels [60–70]: ${colLabels.slice(60, 71).map((l,i)=>`[${60+i}]=${l||'blank'}`).join('  ')}`);
 
   // ── Build colMap: Excel col number → index in this response's table.cols
   //   • Targeted select → columns are in the order we listed in selectedCols (0-based idx)
@@ -276,11 +282,16 @@ async function loadAY() {
     return cell ? parseGvizValue(cell) : '';
   }
 
-  // ── Log a sample row for debugging
-  if (table.rows && table.rows.length > 0) {
-    const sample = table.rows[0];
-    debugLog.push(`\nSample row[0] (first 10 cells): ${
+  // ── Log a sample row for debugging (first actual data row, skip header-like rows)
+  const firstDataRow = (table.rows || []).find(r => r && r.c && num(parseGvizValue(r.c[colMap[ay.TOTAL_DV]] || {})) > 0)
+                    || (table.rows || [])[0];
+  if (firstDataRow) {
+    const sample = firstDataRow;
+    debugLog.push(`\nSample data row (first 10 cells): ${
       (sample.c || []).slice(0, 10).map((c,i) => `[${i}]=${c?.v ?? 'null'}`).join('  ')
+    }`);
+    debugLog.push(`Sample row cells [63–68]: ${
+      (sample.c || []).slice(63, 69).map((c,i) => `[${63+i}]=${c?.v ?? 'null'}`).join('  ')
     }`);
     debugLog.push(`  SAP_ID(idx ${colMap[ay.SAP_ID]}): ${getCellVal(sample, ay.SAP_ID)}`);
     debugLog.push(`  Name  (idx ${colMap[ay.SCHOOL_NAME]}): ${getCellVal(sample, ay.SCHOOL_NAME)}`);
