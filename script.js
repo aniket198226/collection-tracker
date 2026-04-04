@@ -207,9 +207,12 @@ async function loadAY() {
   let table;
   let useFullSheet = false;
 
+  // Always append "limit 10000" so we don't hit gviz's default ~1000 row cap
+  const tqSelect  = selectTQ(selectedCols) + ' limit 10000';
+  const tqFull    = 'select * limit 10000';
+
   try {
-    table = await fetchGviz({ gid: CFG.AY_GID, headers: 1 }, selectTQ(selectedCols));
-    // Verify we actually got the right number of columns back
+    table = await fetchGviz({ gid: CFG.AY_GID, headers: 1 }, tqSelect);
     if (!table || !table.cols || table.cols.length < selectedCols.length - 5) {
       throw new Error(`Expected ~${selectedCols.length} cols, got ${table?.cols?.length}`);
     }
@@ -217,7 +220,7 @@ async function loadAY() {
   } catch (e) {
     debugLog.push(`✗ Targeted select failed: ${e.message} — falling back to full sheet`);
     await delay(600);
-    table = await fetchGviz({ gid: CFG.AY_GID, headers: 1 });
+    table = await fetchGviz({ gid: CFG.AY_GID, headers: 1 }, tqFull);
     useFullSheet = true;
     debugLog.push(`✓ AY full sheet fetched — ${table.cols.length} cols, ${(table.rows||[]).length} rows`);
   }
@@ -285,6 +288,19 @@ async function loadAY() {
     debugLog.push(`  DV    (idx ${colMap[ay.TOTAL_DV]}): ${getCellVal(sample, ay.TOTAL_DV)}`);
   }
 
+  // ── Raw diagnostic pass (before filtering) — helps spot row-limit or column-mapping issues
+  let rawDV = 0, rawColl = 0, rawRows = 0, skippedRows = 0;
+  for (const row of (table.rows || [])) {
+    if (!row || !row.c) continue;
+    rawRows++;
+    rawDV   += num(getCellVal(row, ay.TOTAL_DV));
+    rawColl += num(getCellVal(row, ay.TOTAL_COLL));
+  }
+  debugLog.push(`\nRAW totals (all ${rawRows} gviz rows, before any filter):`);
+  debugLog.push(`  DV:         ₹${Math.round(rawDV).toLocaleString('en-IN')}`);
+  debugLog.push(`  Collection: ₹${Math.round(rawColl).toLocaleString('en-IN')}`);
+  debugLog.push(`  (Compare these to sheet totals to check for row-limit or column-index issues)`);
+
   // ── Process rows
   const result = [];
   for (const row of (table.rows || [])) {
@@ -300,7 +316,10 @@ async function loadAY() {
     const poc       = String(getCellVal(row, ay.POC) || '').trim();
 
     // Skip only rows with absolutely nothing useful
-    if (!sapId && !name && !trust && dv === 0 && invoice === 0 && collected === 0) continue;
+    if (!sapId && !name && !trust && dv === 0 && invoice === 0 && collected === 0) {
+      skippedRows++;
+      continue;
+    }
 
     // Payment schedule — pairs of (date, amount)
     const payments = [];
@@ -325,7 +344,9 @@ async function loadAY() {
     });
   }
 
-  debugLog.push(`\nAY rows processed: ${result.length}`);
+  debugLog.push(`\nAY rows processed: ${result.length}  (skipped blank: ${skippedRows})`);
+  debugLog.push(`  Dashboard DV total:         ₹${Math.round(result.reduce((s,r)=>s+r.dv,0)).toLocaleString('en-IN')}`);
+  debugLog.push(`  Dashboard Collection total: ₹${Math.round(result.reduce((s,r)=>s+r.collected,0)).toLocaleString('en-IN')}`);
   return result;
 }
 
