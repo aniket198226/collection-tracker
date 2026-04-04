@@ -38,6 +38,7 @@
     <nav class="tabs">
       <button class="tab-btn active" data-tab="overview">State Overview</button>
       <button class="tab-btn" data-tab="detailed">Detailed Analysis</button>
+      <button class="tab-btn" data-tab="projected">Projected Collections</button>
       <button class="tab-btn" data-tab="recent">Recent Collections</button>
     </nav>
 
@@ -126,14 +127,6 @@
           <label>Collection POC</label>
           <select id="det-poc" multiple size="5"></select>
         </div>
-        <div class="filter-group">
-          <label>Due Date From</label>
-          <input type="date" id="det-from" />
-        </div>
-        <div class="filter-group">
-          <label>Due Date To</label>
-          <input type="date" id="det-to" />
-        </div>
         <div class="filter-actions">
           <button onclick="applyDetailedFilter()">Apply Filters</button>
           <button class="btn-secondary" onclick="clearDetailedFilter()">Clear</button>
@@ -191,7 +184,58 @@
 
     </section>
 
-    <!-- ==================== TAB 3: RECENT COLLECTIONS ==================== -->
+    <!-- ==================== TAB 3: PROJECTED COLLECTIONS ==================== -->
+    <section id="tab-projected" class="tab-content">
+
+      <div class="section-header">
+        <h2>Projected Collections</h2>
+        <p class="subtitle">Payment schedule from AY 26-27 · Select a future date range to see expected collections</p>
+      </div>
+
+      <div class="filter-panel">
+        <div class="filter-group">
+          <label>State</label>
+          <select id="proj-state" multiple size="5"></select>
+        </div>
+        <div class="filter-group">
+          <label>Collection POC</label>
+          <select id="proj-poc" multiple size="5"></select>
+        </div>
+        <div class="filter-group">
+          <label>From Date</label>
+          <input type="date" id="proj-from" />
+        </div>
+        <div class="filter-group">
+          <label>To Date</label>
+          <input type="date" id="proj-to" />
+        </div>
+        <div class="filter-actions">
+          <button onclick="applyProjectedFilter()">Apply Filters</button>
+          <button class="btn-secondary" onclick="clearProjectedFilter()">Clear</button>
+        </div>
+      </div>
+
+      <div id="proj-kpis" class="kpi-grid"></div>
+
+      <div class="table-wrap">
+        <table id="proj-table">
+          <thead>
+            <tr>
+              <th>Due Date</th>
+              <th>POC</th>
+              <th>School Name</th>
+              <th>State</th>
+              <th>Type</th>
+              <th class="r">Expected Amount</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+    </section>
+
+    <!-- ==================== TAB 4: RECENT COLLECTIONS ==================== -->
     <section id="tab-recent" class="tab-content">
 
       <div class="section-header">

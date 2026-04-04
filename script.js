@@ -584,7 +584,7 @@ function renderTop10(stateFilter) {
 // ─────────────────────────────────────────────────────────
 // TAB 2 — DETAILED ANALYSIS
 // ─────────────────────────────────────────────────────────
-function renderDetailed(stateFilter, pocFilter, dateFrom, dateTo) {
+function renderDetailed(stateFilter, pocFilter) {
   const today = today0();
   const filtered = filterSchools(stateFilter, pocFilter);
 
@@ -594,13 +594,11 @@ function renderDetailed(stateFilter, pocFilter, dateFrom, dateTo) {
   const totColl = filtered.reduce((s, r) => s + r.collected, 0);
   const totDue  = filtered.reduce((s, r) => s + r.due, 0);
 
-  // "Total due till date" = sum of all past-due scheduled payments within date filter
+  // "Total due till date" = sum of all past-due scheduled payments
   let totDueTillDate = 0;
   for (const s of filtered) {
     for (const p of s.payments) {
       if (!p.date) continue;
-      if (dateFrom && p.date < dateFrom) continue;
-      if (dateTo   && p.date > dateTo)   continue;
       if (p.date <= today) totDueTillDate += p.amount;
     }
   }
@@ -622,8 +620,6 @@ function renderDetailed(stateFilter, pocFilter, dateFrom, dateTo) {
       let dueTillDate = 0;
       for (const p of s.payments) {
         if (!p.date) continue;
-        if (dateFrom && p.date < dateFrom) continue;
-        if (dateTo   && p.date > dateTo)   continue;
         if (p.date <= today) dueTillDate += p.amount;
       }
       return `<tr>
@@ -641,14 +637,13 @@ function renderDetailed(stateFilter, pocFilter, dateFrom, dateTo) {
 
   setTbody('client-table', clientRows);
 
-  // ── POC-wise aging table
+  // ── POC-wise aging table — overdue installments only
   const agingEntries = [];
   for (const s of filtered) {
     for (const p of s.payments) {
       if (!p.date || p.amount <= 0) continue;
-      if (dateFrom && p.date < dateFrom) continue;
-      if (dateTo   && p.date > dateTo)   continue;
       const daysOverdue = daysBetween(p.date, today);
+      if (daysOverdue <= 0) continue; // only show past-due
       agingEntries.push({ poc: s.poc, name: s.name, type: p.type, date: p.date, amount: p.amount, daysOverdue });
     }
   }
@@ -662,8 +657,7 @@ function renderDetailed(stateFilter, pocFilter, dateFrom, dateTo) {
 
   const agingRows = agingEntries.map(e => {
     let badge;
-    if (e.daysOverdue <= 0)       badge = '<span class="badge on-time">Upcoming</span>';
-    else if (e.daysOverdue <= 30) badge = `<span class="badge warn">${e.daysOverdue}d overdue</span>`;
+    if (e.daysOverdue <= 30) badge = `<span class="badge warn">${e.daysOverdue}d overdue</span>`;
     else if (e.daysOverdue <= 60) badge = `<span class="badge danger">${e.daysOverdue}d overdue</span>`;
     else                          badge = `<span class="badge critical">${e.daysOverdue}d overdue</span>`;
 
@@ -673,20 +667,16 @@ function renderDetailed(stateFilter, pocFilter, dateFrom, dateTo) {
       <td>${e.type}</td>
       <td>${fmtDate(e.date)}</td>
       <td class="num">${fmt(e.amount)}</td>
-      <td class="num">${e.daysOverdue > 0 ? e.daysOverdue : '—'}</td>
+      <td class="num">${e.daysOverdue}</td>
       <td>${badge}</td>
     </tr>`;
   }).join('');
 
-  setTbody('aging-table', agingRows);
+  setTbody('aging-table', agingRows || '<tr class="empty-row"><td colspan="7">No overdue installments found.</td></tr>');
 }
 
 function applyDetailedFilter() {
-  const states = getSelected('det-state');
-  const pocs   = getSelected('det-poc');
-  const from   = document.getElementById('det-from').value ? new Date(document.getElementById('det-from').value) : null;
-  const to     = document.getElementById('det-to').value   ? new Date(document.getElementById('det-to').value)   : null;
-  renderDetailed(states, pocs, from, to);
+  renderDetailed(getSelected('det-state'), getSelected('det-poc'));
 }
 
 function clearDetailedFilter() {
@@ -694,9 +684,86 @@ function clearDetailedFilter() {
     const el = document.getElementById(id);
     [...el.options].forEach(o => { o.selected = o.value === 'ALL'; });
   });
-  document.getElementById('det-from').value = '';
-  document.getElementById('det-to').value   = '';
-  renderDetailed([], [], null, null);
+  renderDetailed([], []);
+}
+
+// ─────────────────────────────────────────────────────────
+// TAB 3 — PROJECTED COLLECTIONS
+// ─────────────────────────────────────────────────────────
+function renderProjected(stateFilter, pocFilter, dateFrom, dateTo) {
+  if (!dateFrom || !dateTo) {
+    renderKPIs('proj-kpis', []);
+    setTbody('proj-table', '<tr class="empty-row"><td colspan="6">Select a date range above to see projected collections.</td></tr>');
+    return;
+  }
+
+  const entries = [];
+  for (const s of schools) {
+    // Apply state/POC filters if set
+    if (stateFilter.length && !stateFilter.includes(s.state)) continue;
+    if (pocFilter.length   && !pocFilter.includes(s.poc))     continue;
+
+    for (const p of s.payments) {
+      if (!p.date || p.amount <= 0) continue;
+      if (p.date < dateFrom || p.date > dateTo) continue;
+      entries.push({ poc: s.poc, name: s.name, state: s.state, date: p.date, amount: p.amount, type: p.type });
+    }
+  }
+
+  // Sort by date asc, then POC asc
+  entries.sort((a, b) => {
+    const dateDiff = a.date - b.date;
+    if (dateDiff !== 0) return dateDiff;
+    return a.poc < b.poc ? -1 : a.poc > b.poc ? 1 : 0;
+  });
+
+  const totalAmt = entries.reduce((s, r) => s + r.amount, 0);
+
+  renderKPIs('proj-kpis', [
+    { label: 'Schools with Payments', value: new Set(entries.map(e => e.name)).size.toString() },
+    { label: 'Total Installments',    value: entries.length.toString()                          },
+    { label: 'Total Expected Amount', value: fmt(totalAmt), cls: 'green-border'                 },
+  ]);
+
+  if (!entries.length) {
+    setTbody('proj-table', '<tr class="empty-row"><td colspan="6">No projected collections in this date range.</td></tr>');
+    return;
+  }
+
+  const rows = entries.map(e => `<tr>
+    <td>${fmtDate(e.date)}</td>
+    <td>${e.poc}</td>
+    <td>${e.name}</td>
+    <td>${e.state}</td>
+    <td>${e.type}</td>
+    <td class="num pos">${fmt(e.amount)}</td>
+  </tr>`).join('');
+
+  setTbody('proj-table', rows);
+}
+
+function applyProjectedFilter() {
+  const states = getSelected('proj-state');
+  const pocs   = getSelected('proj-poc');
+  const fromVal = document.getElementById('proj-from').value;
+  const toVal   = document.getElementById('proj-to').value;
+  const from = fromVal ? new Date(fromVal) : null;
+  const to   = toVal   ? new Date(toVal)   : null;
+  renderProjected(states, pocs, from, to);
+}
+
+function clearProjectedFilter() {
+  ['proj-state', 'proj-poc'].forEach(id => {
+    const el = document.getElementById(id);
+    [...el.options].forEach(o => { o.selected = o.value === 'ALL'; });
+  });
+  const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+  document.getElementById('proj-from').value = tomorrowStr;
+  document.getElementById('proj-from').min   = tomorrowStr;
+  document.getElementById('proj-to').value   = '';
+  document.getElementById('proj-to').min     = tomorrowStr;
+  renderProjected([], [], null, null);
 }
 
 // ─────────────────────────────────────────────────────────
@@ -812,7 +879,16 @@ async function init() {
     populateSelect('top10-state-filter', states);
     populateSelect('det-state', states);
     populateSelect('det-poc', pocs);
+    populateSelect('proj-state', states);
+    populateSelect('proj-poc', pocs);
     populateSelect('rec-state-filter', states);
+
+    // Projected Collections — restrict date pickers to future dates only
+    const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().slice(0, 10);
+    document.getElementById('proj-from').min   = tomorrowStr;
+    document.getElementById('proj-from').value = tomorrowStr;
+    document.getElementById('proj-to').min     = tomorrowStr;
 
     // top10 state filter is a single-select with 'ALL'
     const top10Sel = document.getElementById('top10-state-filter');
@@ -827,7 +903,8 @@ async function init() {
     // Initial renders
     renderOverview([]);
     renderTop10('ALL');
-    renderDetailed([], [], null, null);
+    renderDetailed([], []);
+    renderProjected([], [], null, null);
     renderRecent([]);
 
     document.getElementById('last-updated').textContent =
