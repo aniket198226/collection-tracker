@@ -742,13 +742,17 @@ function renderProjected(stateFilter, pocFilter, dateFrom, dateTo) {
   setTbody('proj-table', rows);
 }
 
+function parseLocalDate(str) {
+  if (!str) return null;
+  const [y, m, d] = str.split('-').map(Number);
+  return new Date(y, m - 1, d); // local midnight — avoids UTC offset shifting the day
+}
+
 function applyProjectedFilter() {
   const states = getSelected('proj-state');
   const pocs   = getSelected('proj-poc');
-  const fromVal = document.getElementById('proj-from').value;
-  const toVal   = document.getElementById('proj-to').value;
-  const from = fromVal ? new Date(fromVal) : null;
-  const to   = toVal   ? new Date(toVal)   : null;
+  const from = parseLocalDate(document.getElementById('proj-from').value);
+  const to   = parseLocalDate(document.getElementById('proj-to').value);
   renderProjected(states, pocs, from, to);
 }
 
