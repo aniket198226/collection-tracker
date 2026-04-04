@@ -24,7 +24,9 @@ const CFG = {
     STATE:       22,  // V  – State
     TOTAL_DV:    66,  // BN – Total Deal Value
     TOTAL_COLL:  67,  // BO – Total Collection done
-    SCHOOL_INV:  639, // XO – School Invoice (invoicing done)
+    TOTAL_INV:   638, // XN – Total Invoice
+    TOTAL_CN:    640, // XP – Total Credit Note (CN)
+    // Net Invoicing = TOTAL_INV - TOTAL_CN  (computed at row level)
     // Payment schedule: date+amount pairs, VX–WO (1-indexed 596–613)
     PAY_START:   596, // VX – first date column
     CORE_END:    605, // WG – last Core column (5 pairs: VX-VY … WF-WG)
@@ -195,7 +197,7 @@ async function loadAY() {
 
   const selectedCols = [
     ay.SAP_ID, ay.SCHOOL_NAME, ay.TRUST_NAME, ay.STATE,
-    ay.TOTAL_DV, ay.TOTAL_COLL, ay.SCHOOL_INV,
+    ay.TOTAL_DV, ay.TOTAL_COLL, ay.TOTAL_INV, ay.TOTAL_CN,
     ...payCols,
     ay.TOTAL_PAY, ay.POC
   ];
@@ -253,7 +255,8 @@ async function loadAY() {
     [ay.STATE]:       findByLabel('state'),
     [ay.TOTAL_DV]:    findByLabel('total dv', 'deal value'),
     [ay.TOTAL_COLL]:  findByLabel('total collection', 'collection done'),
-    [ay.SCHOOL_INV]:  findByLabel('school invoice', 'invoicing'),
+    [ay.TOTAL_INV]:   findByLabel('total invoice'),
+    [ay.TOTAL_CN]:    findByLabel('total cn', 'credit note'),
     [ay.POC]:         findByLabel('poc', 'collection poc', 'responsible'),
   };
   Object.entries(labelOverrides).forEach(([excCol, idx]) => {
@@ -293,7 +296,7 @@ async function loadAY() {
     const state     = String(getCellVal(row, ay.STATE) || '').trim();
     const dv        = num(getCellVal(row, ay.TOTAL_DV));
     const collected = num(getCellVal(row, ay.TOTAL_COLL));
-    const invoice   = num(getCellVal(row, ay.SCHOOL_INV));
+    const invoice   = Math.max(0, num(getCellVal(row, ay.TOTAL_INV)) - num(getCellVal(row, ay.TOTAL_CN)));
     const poc       = String(getCellVal(row, ay.POC) || '').trim();
 
     // Skip only rows with absolutely nothing useful
@@ -750,7 +753,7 @@ async function init() {
 
   const loadingEl = document.getElementById('loading');
   const appEl     = document.getElementById('app');
-  const msgEl     = document.getElementById('loading-msg');
+
 
   loadingEl.classList.remove('hidden');
   appEl.classList.add('hidden');
