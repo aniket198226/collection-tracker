@@ -200,6 +200,8 @@ button {
 button:hover          { background: var(--blue-dark); }
 .btn-secondary        { background: var(--white); color: var(--gray-600); border: 1px solid var(--gray-200); }
 .btn-secondary:hover  { background: var(--gray-50); }
+.btn-export           { background: var(--green); color: var(--white); border: none; font-size: 12px; padding: 6px 14px; border-radius: var(--radius); cursor: pointer; white-space: nowrap; align-self: flex-start; }
+.btn-export:hover     { background: var(--green-dark, #046040); }
 .btn-group            { display: flex; gap: 6px; }
 
 #refresh-btn, #debug-toggle {

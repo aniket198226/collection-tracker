@@ -38,6 +38,7 @@
     <nav class="tabs">
       <button class="tab-btn active" data-tab="overview">State Overview</button>
       <button class="tab-btn" data-tab="detailed">Detailed Analysis</button>
+      <button class="tab-btn" data-tab="poc">POC wise Report</button>
       <button class="tab-btn" data-tab="projected">Projected Collections</button>
       <button class="tab-btn" data-tab="recent">Recent Collections</button>
     </nav>
@@ -48,6 +49,7 @@
       <!-- Overall KPIs -->
       <div class="section-header">
         <h2>Overall Summary</h2>
+        <button class="btn-export" onclick="exportToExcel('overview', 'State_Overview')">&#8595; Export to Excel</button>
       </div>
       <div id="overall-kpis" class="kpi-grid"></div>
 
@@ -115,7 +117,10 @@
     <!-- ==================== TAB 2: DETAILED ANALYSIS ==================== -->
     <section id="tab-detailed" class="tab-content">
 
-      <div class="section-header"><h2>Detailed Analysis</h2></div>
+      <div class="section-header">
+        <h2>Detailed Analysis</h2>
+        <button class="btn-export" onclick="exportToExcel('detailed', 'Detailed_Analysis')">&#8595; Export to Excel</button>
+      </div>
 
       <!-- Filters -->
       <div class="filter-panel">
@@ -157,20 +162,46 @@
         </table>
       </div>
 
-      <!-- POC-wise Aging -->
-      <div class="section-header" style="margin-top:32px"><h3>POC-wise Aging (Overdue Installments)</h3></div>
+    </section>
+
+    <!-- ==================== TAB 3: POC WISE REPORT ==================== -->
+    <section id="tab-poc" class="tab-content">
+
+      <div class="section-header">
+        <h2>POC wise Report — Overdue Installments</h2>
+        <button class="btn-export" onclick="exportToExcel('poc', 'POC_wise_Report')">&#8595; Export to Excel</button>
+      </div>
+
+      <div class="filter-panel">
+        <div class="filter-group">
+          <label>State</label>
+          <select id="poc-state" multiple size="5"></select>
+        </div>
+        <div class="filter-group">
+          <label>Collection POC</label>
+          <select id="poc-poc" multiple size="5"></select>
+        </div>
+        <div class="filter-actions">
+          <button onclick="applyPOCFilter()">Apply Filters</button>
+          <button class="btn-secondary" onclick="clearPOCFilter()">Clear</button>
+        </div>
+      </div>
+
+      <div id="poc-kpis" class="kpi-grid"></div>
+
       <div class="aging-legend">
-        <span class="badge on-time">Upcoming / On Time</span>
         <span class="badge warn">1–30 days overdue</span>
         <span class="badge danger">31–60 days overdue</span>
         <span class="badge critical">60+ days overdue</span>
       </div>
+
       <div class="table-wrap">
         <table id="aging-table">
           <thead>
             <tr>
               <th>POC</th>
               <th>School Name</th>
+              <th>State</th>
               <th>Type</th>
               <th>Due Date</th>
               <th class="r">Scheduled Amount</th>
@@ -184,12 +215,13 @@
 
     </section>
 
-    <!-- ==================== TAB 3: PROJECTED COLLECTIONS ==================== -->
+    <!-- ==================== TAB 4: PROJECTED COLLECTIONS ==================== -->
     <section id="tab-projected" class="tab-content">
 
       <div class="section-header">
         <h2>Projected Collections</h2>
         <p class="subtitle">Payment schedule from AY 26-27 · Select a future date range to see expected collections</p>
+        <button class="btn-export" onclick="exportToExcel('projected', 'Projected_Collections')">&#8595; Export to Excel</button>
       </div>
 
       <div class="filter-panel">
@@ -241,6 +273,7 @@
       <div class="section-header">
         <h2>Recent Collections — Last 7 Days</h2>
         <p class="subtitle">Source: RECON tab · AY 26-27 only · Mapped via School ID</p>
+        <button class="btn-export" onclick="exportToExcel('recent', 'Recent_Collections')">&#8595; Export to Excel</button>
       </div>
 
       <div class="filter-inline" style="margin-bottom:16px">

@@ -582,6 +582,41 @@ function renderTop10(stateFilter) {
 }
 
 // ─────────────────────────────────────────────────────────
+// EXPORT TO EXCEL
+// ─────────────────────────────────────────────────────────
+function exportToExcel(tabId, filename) {
+  const section = document.getElementById('tab-' + tabId);
+  const tables  = section.querySelectorAll('table');
+  if (!tables.length) { alert('No data to export.'); return; }
+
+  // Build an Excel-compatible HTML doc with all tables in the tab
+  let body = '';
+  tables.forEach((tbl, i) => {
+    if (i > 0) body += '<br/><br/>';
+    // Find the nearest preceding h2/h3 heading as a section label
+    const heading = tbl.closest('.table-wrap')?.previousElementSibling?.querySelector('h3,h2');
+    if (heading) body += `<h3>${heading.textContent}</h3>`;
+    body += tbl.outerHTML;
+  });
+
+  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office"
+    xmlns:x="urn:schemas-microsoft-com:office:excel">
+    <head><meta charset="UTF-8">
+    <style>th{background:#1a3a5c;color:#fff;font-weight:bold;} .due{color:#c0392b;} .pos{color:#27ae60;}</style>
+    </head><body>${body}</body></html>`;
+
+  const blob = new Blob(['\ufeff' + html], { type: 'application/vnd.ms-excel' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = filename + '_' + new Date().toISOString().slice(0, 10) + '.xls';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// ─────────────────────────────────────────────────────────
 // TAB 2 — DETAILED ANALYSIS
 // ─────────────────────────────────────────────────────────
 function renderDetailed(stateFilter, pocFilter) {
@@ -636,15 +671,25 @@ function renderDetailed(stateFilter, pocFilter) {
     }).join('');
 
   setTbody('client-table', clientRows);
+}
 
-  // ── POC-wise aging table — overdue installments only
+// ─────────────────────────────────────────────────────────
+// TAB 3 — POC WISE REPORT (overdue installments)
+// ─────────────────────────────────────────────────────────
+function renderPOCReport(stateFilter, pocFilter) {
+  const today   = today0();
+  const filtered = filterSchools(stateFilter, pocFilter);
+
   const agingEntries = [];
   for (const s of filtered) {
     for (const p of s.payments) {
       if (!p.date || p.amount <= 0) continue;
       const daysOverdue = daysBetween(p.date, today);
-      if (daysOverdue <= 0) continue; // only show past-due
-      agingEntries.push({ poc: s.poc, name: s.name, type: p.type, date: p.date, amount: p.amount, daysOverdue });
+      if (daysOverdue <= 0) continue; // only past-due
+      agingEntries.push({
+        poc: s.poc, name: s.name, state: s.state,
+        type: p.type, date: p.date, amount: p.amount, daysOverdue
+      });
     }
   }
 
@@ -655,15 +700,22 @@ function renderDetailed(stateFilter, pocFilter) {
     return b.daysOverdue - a.daysOverdue;
   });
 
+  const totalOverdue = agingEntries.reduce((s, e) => s + e.amount, 0);
+  renderKPIs('poc-kpis', [
+    { label: 'Overdue Entries',      value: agingEntries.length.toString()           },
+    { label: 'Total Overdue Amount', value: fmt(totalOverdue), cls: 'red-border'     },
+  ]);
+
   const agingRows = agingEntries.map(e => {
     let badge;
-    if (e.daysOverdue <= 30) badge = `<span class="badge warn">${e.daysOverdue}d overdue</span>`;
+    if (e.daysOverdue <= 30)      badge = `<span class="badge warn">${e.daysOverdue}d overdue</span>`;
     else if (e.daysOverdue <= 60) badge = `<span class="badge danger">${e.daysOverdue}d overdue</span>`;
     else                          badge = `<span class="badge critical">${e.daysOverdue}d overdue</span>`;
 
     return `<tr>
       <td>${e.poc}</td>
       <td>${e.name}</td>
+      <td>${e.state}</td>
       <td>${e.type}</td>
       <td>${fmtDate(e.date)}</td>
       <td class="num">${fmt(e.amount)}</td>
@@ -672,7 +724,19 @@ function renderDetailed(stateFilter, pocFilter) {
     </tr>`;
   }).join('');
 
-  setTbody('aging-table', agingRows || '<tr class="empty-row"><td colspan="7">No overdue installments found.</td></tr>');
+  setTbody('aging-table', agingRows || '<tr class="empty-row"><td colspan="8">No overdue installments found.</td></tr>');
+}
+
+function applyPOCFilter() {
+  renderPOCReport(getSelected('poc-state'), getSelected('poc-poc'));
+}
+
+function clearPOCFilter() {
+  ['poc-state', 'poc-poc'].forEach(id => {
+    const el = document.getElementById(id);
+    [...el.options].forEach(o => { o.selected = o.value === 'ALL'; });
+  });
+  renderPOCReport([], []);
 }
 
 function applyDetailedFilter() {
@@ -883,6 +947,8 @@ async function init() {
     populateSelect('top10-state-filter', states);
     populateSelect('det-state', states);
     populateSelect('det-poc', pocs);
+    populateSelect('poc-state', states);
+    populateSelect('poc-poc', pocs);
     populateSelect('proj-state', states);
     populateSelect('proj-poc', pocs);
     populateSelect('rec-state-filter', states);
@@ -908,6 +974,7 @@ async function init() {
     renderOverview([]);
     renderTop10('ALL');
     renderDetailed([], []);
+    renderPOCReport([], []);
     renderProjected([], [], null, null);
     renderRecent([]);
 
