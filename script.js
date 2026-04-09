@@ -617,6 +617,42 @@ function exportToExcel(tabId, filename) {
 }
 
 // ─────────────────────────────────────────────────────────
+// SHARED HELPER — net overdue after applying collections
+// Collections (BO) are consumed FIFO against the earliest
+// overdue installments first.  Returns:
+//   { netDue, entries[] }  where netDue = scalar and entries
+//   are the still-outstanding installment rows (amount trimmed).
+// ─────────────────────────────────────────────────────────
+function calcNetOverdue(school, today) {
+  // Past-due installments sorted earliest-first for FIFO
+  const pastDue = school.payments
+    .filter(p => p.date && p.amount > 0 && daysBetween(p.date, today) > 0)
+    .sort((a, b) => a.date - b.date);
+
+  let pool = school.collected; // apply collected amount FIFO
+  let netDue = 0;
+  const entries = [];
+
+  for (const p of pastDue) {
+    if (pool >= p.amount) {
+      pool -= p.amount;           // fully covered — skip
+      continue;
+    }
+    const outstanding = p.amount - pool;
+    pool = 0;
+    netDue += outstanding;
+    entries.push({
+      poc: school.poc, name: school.name, state: school.state,
+      type: p.type, date: p.date,
+      amount: outstanding,
+      daysOverdue: daysBetween(p.date, today)
+    });
+  }
+
+  return { netDue, entries };
+}
+
+// ─────────────────────────────────────────────────────────
 // TAB 2 — DETAILED ANALYSIS
 // ─────────────────────────────────────────────────────────
 function renderDetailed(stateFilter, pocFilter) {
@@ -629,14 +665,8 @@ function renderDetailed(stateFilter, pocFilter) {
   const totColl = filtered.reduce((s, r) => s + r.collected, 0);
   const totDue  = filtered.reduce((s, r) => s + r.due, 0);
 
-  // "Total due till date" = sum of all past-due scheduled payments
-  let totDueTillDate = 0;
-  for (const s of filtered) {
-    for (const p of s.payments) {
-      if (!p.date) continue;
-      if (p.date <= today) totDueTillDate += p.amount;
-    }
-  }
+  // "Total due till date" = net overdue per school (collected offset applied)
+  const totDueTillDate = filtered.reduce((sum, s) => sum + calcNetOverdue(s, today).netDue, 0);
 
   renderKPIs('det-kpis', [
     { label: 'Total Clients',         value: filtered.length.toString()            },
@@ -652,11 +682,7 @@ function renderDetailed(stateFilter, pocFilter) {
   const clientRows = filtered
     .sort((a, b) => b.due - a.due)
     .map(s => {
-      let dueTillDate = 0;
-      for (const p of s.payments) {
-        if (!p.date) continue;
-        if (p.date <= today) dueTillDate += p.amount;
-      }
+      const { netDue: dueTillDate } = calcNetOverdue(s, today);
       return `<tr>
         <td>${s.name}</td>
         <td>${s.state}</td>
@@ -680,17 +706,11 @@ function renderPOCReport(stateFilter, pocFilter) {
   const today   = today0();
   const filtered = filterSchools(stateFilter, pocFilter);
 
+  // Collect net-overdue entries across all schools (FIFO collection already applied)
   const agingEntries = [];
   for (const s of filtered) {
-    for (const p of s.payments) {
-      if (!p.date || p.amount <= 0) continue;
-      const daysOverdue = daysBetween(p.date, today);
-      if (daysOverdue <= 0) continue; // only past-due
-      agingEntries.push({
-        poc: s.poc, name: s.name, state: s.state,
-        type: p.type, date: p.date, amount: p.amount, daysOverdue
-      });
-    }
+    const { entries } = calcNetOverdue(s, today);
+    agingEntries.push(...entries);
   }
 
   // Sort: POC asc, then daysOverdue desc
