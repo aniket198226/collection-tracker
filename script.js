@@ -98,9 +98,10 @@ function parseGvizValue(cell) {
 
   if (cell.v === null || cell.v === undefined) return '';
 
-  // Formatted string available → prefer it for dates already rendered as strings
-  if (cell.f && typeof cell.v === 'number' && cell.v > 40000 && cell.v < 60000) {
-    // Likely an Excel serial date — use formatted value
+  // Formatted string available → only treat as date if f looks like a date (contains / or -)
+  // Avoids misidentifying numeric values like 50,000 that happen to fall in date serial range
+  if (cell.f && typeof cell.v === 'number' && cell.v > 40000 && cell.v < 60000
+      && /\d[\/\-]\d/.test(cell.f)) {
     return new Date(cell.f);
   }
 
@@ -336,12 +337,6 @@ async function loadAY() {
     const invoice   = Math.max(0, num(getCellVal(row, ay.TOTAL_INV)) - num(getCellVal(row, ay.TOTAL_CN)));
     const poc       = String(getCellVal(row, ay.POC) || '').trim();
 
-    // Debug: log raw cell for White Crown Academy
-    if (name.toLowerCase().includes('white crown') || trust.toLowerCase().includes('white crown')) {
-      const collIdx = colMap[ay.TOTAL_COLL];
-      const rawCell = row.c[collIdx];
-      debugLog.push(`\nDEBUG White Crown: name="${name}" collIdx=${collIdx} rawCell=${JSON.stringify(rawCell)} → collected=${collected}`);
-    }
 
     // Skip only rows with absolutely nothing useful
     if (!sapId && !name && !trust && dv === 0 && invoice === 0 && collected === 0) {
