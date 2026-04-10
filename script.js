@@ -79,14 +79,24 @@ function pctNum(a, b) {
 }
 
 // Parse a gviz cell value.  gviz returns dates as "Date(y,m,d)" strings.
+// For formula cells (especially cross-sheet references like SUMIF), gviz sometimes
+// returns {v: null, f: "50,000"} — v is null but f holds the formatted numeric string.
 function parseGvizValue(cell) {
-  if (!cell || cell.v === null || cell.v === undefined) return '';
+  if (!cell) return '';
 
   // Date cell: v = "Date(2026,2,1)" (months 0-based)
   if (typeof cell.v === 'string' && cell.v.startsWith('Date(')) {
     const m = cell.v.match(/Date\((\d+),(\d+),(\d+)\)/);
     if (m) return new Date(+m[1], +m[2], +m[3]);
   }
+
+  // v is null/undefined but formatted string exists → parse it as a number
+  if ((cell.v === null || cell.v === undefined) && cell.f) {
+    const n = parseFloat(String(cell.f).replace(/[₹,\s]/g, ''));
+    return isNaN(n) ? '' : n;
+  }
+
+  if (cell.v === null || cell.v === undefined) return '';
 
   // Formatted string available → prefer it for dates already rendered as strings
   if (cell.f && typeof cell.v === 'number' && cell.v > 40000 && cell.v < 60000) {
