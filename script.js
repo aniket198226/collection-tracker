@@ -336,6 +336,13 @@ async function loadAY() {
     const invoice   = Math.max(0, num(getCellVal(row, ay.TOTAL_INV)) - num(getCellVal(row, ay.TOTAL_CN)));
     const poc       = String(getCellVal(row, ay.POC) || '').trim();
 
+    // Debug: log raw cell for White Crown Academy
+    if (name.toLowerCase().includes('white crown') || trust.toLowerCase().includes('white crown')) {
+      const collIdx = colMap[ay.TOTAL_COLL];
+      const rawCell = row.c[collIdx];
+      debugLog.push(`\nDEBUG White Crown: name="${name}" collIdx=${collIdx} rawCell=${JSON.stringify(rawCell)} → collected=${collected}`);
+    }
+
     // Skip only rows with absolutely nothing useful
     if (!sapId && !name && !trust && dv === 0 && invoice === 0 && collected === 0) {
       skippedRows++;
