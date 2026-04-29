@@ -523,19 +523,21 @@ function renderOverview(stateFilter) {
     { label: 'Due Against Invoicing',  value: fmt(totDue),  cls: 'red-border'   },
   ]);
 
-  // Aggregate by state
+  // Aggregate by state — sum per-school due (already floored at 0) so state rows
+  // and the footer total are computed the same way and always add up correctly.
   const byState = {};
   for (const s of filtered) {
-    if (!byState[s.state]) byState[s.state] = { dv: 0, inv: 0, coll: 0 };
+    if (!byState[s.state]) byState[s.state] = { dv: 0, inv: 0, coll: 0, due: 0 };
     byState[s.state].dv   += s.dv;
     byState[s.state].inv  += s.invoice;
     byState[s.state].coll += s.collected;
+    byState[s.state].due  += s.due;  // s.due is already max(0, invoice-collected)
   }
 
   let rows = '';
   for (const st of Object.keys(byState).sort()) {
     const d   = byState[st];
-    const due = Math.max(0, d.inv - d.coll);
+    const due = d.due;
     rows += `<tr>
       <td>${st}</td>
       <td class="num">${fmt(d.dv)}</td>
