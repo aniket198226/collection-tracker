@@ -226,9 +226,10 @@ button:hover          { background: var(--blue-dark); }
   padding: 16px 18px;
   box-shadow: var(--shadow-sm);
 }
-.kpi-card.red-border  { border-left: 4px solid var(--red); }
-.kpi-card.green-border{ border-left: 4px solid var(--green); }
-.kpi-card.blue-border { border-left: 4px solid var(--blue); }
+.kpi-card.red-border    { border-left: 4px solid var(--red); }
+.kpi-card.green-border  { border-left: 4px solid var(--green); }
+.kpi-card.blue-border   { border-left: 4px solid var(--blue); }
+.kpi-card.orange-border { border-left: 4px solid var(--orange); }
 
 .kpi-value { font-size: 20px; font-weight: 700; color: var(--gray-800); }
 .kpi-label { font-size: 11px; color: var(--gray-400); margin-top: 4px; text-transform: uppercase; letter-spacing: .4px; }

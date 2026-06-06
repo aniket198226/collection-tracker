@@ -510,43 +510,46 @@ function setTfoot(tableId, html) {
 function renderOverview(stateFilter) {
   const filtered = filterSchools(stateFilter, []);
 
-  const totDV   = filtered.reduce((s, r) => s + r.dv, 0);
-  const totInv  = filtered.reduce((s, r) => s + r.invoice, 0);
-  const totColl = filtered.reduce((s, r) => s + r.collected, 0);
-  // Due = Invoicing − Collection at the aggregate level.
-  // Summing per-school max(0,...) inflates the total when some schools
-  // have over-collected — their surplus should offset other dues.
-  const totDue  = Math.max(0, totInv - totColl);
+  const totDV        = filtered.reduce((s, r) => s + r.dv, 0);
+  const totInv       = filtered.reduce((s, r) => s + r.invoice, 0);
+  const totColl      = filtered.reduce((s, r) => s + r.collected, 0);
+  // Gross due: sum of per-school max(0, inv−coll) — advances in one school
+  // do NOT offset dues in another school.
+  const totDueGross  = filtered.reduce((s, r) => s + r.due, 0);
+  // Net due: portfolio-level inv−coll — advance/excess collection offsets dues.
+  const totDueNet    = Math.max(0, totInv - totColl);
 
   renderKPIs('overall-kpis', [
-    { label: 'Total Deal Value',       value: fmt(totDV),   cls: 'blue-border'  },
-    { label: 'Invoicing Done',         value: fmt(totInv),  cls: 'blue-border'  },
-    { label: '% Invoiced (of DV)',     value: pct(totInv, totDV)               },
-    { label: 'Total Collection',       value: fmt(totColl), cls: 'green-border' },
-    { label: 'Due Against Invoicing',  value: fmt(totDue),  cls: 'red-border'   },
+    { label: 'Total Deal Value',            value: fmt(totDV),        cls: 'blue-border'  },
+    { label: 'Invoicing Done',              value: fmt(totInv),       cls: 'blue-border'  },
+    { label: '% Invoiced (of DV)',          value: pct(totInv, totDV)                     },
+    { label: 'Total Collection',            value: fmt(totColl),      cls: 'green-border' },
+    { label: 'Due (Gross)',                 value: fmt(totDueGross),  cls: 'red-border'   },
+    { label: 'Due (Net of Advances)',       value: fmt(totDueNet),    cls: 'orange-border'},
   ]);
 
-  // Aggregate by state — use state-level inv−coll so each row is consistent
-  // with the same formula, and state rows sum to the footer total.
+  // State rows: show both gross (per-school sum) and net (state-level inv−coll)
   const byState = {};
   for (const s of filtered) {
-    if (!byState[s.state]) byState[s.state] = { dv: 0, inv: 0, coll: 0 };
-    byState[s.state].dv   += s.dv;
-    byState[s.state].inv  += s.invoice;
-    byState[s.state].coll += s.collected;
+    if (!byState[s.state]) byState[s.state] = { dv: 0, inv: 0, coll: 0, dueGross: 0 };
+    byState[s.state].dv       += s.dv;
+    byState[s.state].inv      += s.invoice;
+    byState[s.state].coll     += s.collected;
+    byState[s.state].dueGross += s.due;
   }
 
   let rows = '';
   for (const st of Object.keys(byState).sort()) {
-    const d   = byState[st];
-    const due = Math.max(0, d.inv - d.coll);
+    const d      = byState[st];
+    const dueNet = Math.max(0, d.inv - d.coll);
     rows += `<tr>
       <td>${st}</td>
       <td class="num">${fmt(d.dv)}</td>
       <td class="num">${fmt(d.inv)}</td>
       <td class="num">${pct(d.inv, d.dv)}</td>
       <td class="num pos">${fmt(d.coll)}</td>
-      <td class="due">${fmt(due)}</td>
+      <td class="due">${fmt(d.dueGross)}</td>
+      <td class="due">${fmt(dueNet)}</td>
     </tr>`;
   }
 
@@ -557,7 +560,8 @@ function renderOverview(stateFilter) {
     <td class="num"><strong>${fmt(totInv)}</strong></td>
     <td class="num"><strong>${pct(totInv, totDV)}</strong></td>
     <td class="num pos"><strong>${fmt(totColl)}</strong></td>
-    <td class="due"><strong>${fmt(totDue)}</strong></td>
+    <td class="due"><strong>${fmt(totDueGross)}</strong></td>
+    <td class="due"><strong>${fmt(totDueNet)}</strong></td>
   </tr>`);
 }
 
@@ -676,22 +680,24 @@ function renderDetailed(stateFilter, pocFilter) {
   const filtered = filterSchools(stateFilter, pocFilter);
 
   // KPIs
-  const totDV   = filtered.reduce((s, r) => s + r.dv, 0);
-  const totInv  = filtered.reduce((s, r) => s + r.invoice, 0);
-  const totColl = filtered.reduce((s, r) => s + r.collected, 0);
-  const totDue  = Math.max(0, totInv - totColl); // aggregate: inv − coll
+  const totDV        = filtered.reduce((s, r) => s + r.dv, 0);
+  const totInv       = filtered.reduce((s, r) => s + r.invoice, 0);
+  const totColl      = filtered.reduce((s, r) => s + r.collected, 0);
+  const totDueGross  = filtered.reduce((s, r) => s + r.due, 0);       // per-school, advances ignored
+  const totDueNet    = Math.max(0, totInv - totColl);                   // portfolio-level, advances offset
 
   // "Total due till date" = net overdue per school (collected offset applied)
   const totDueTillDate = filtered.reduce((sum, s) => sum + calcNetOverdue(s, today).netDue, 0);
 
   renderKPIs('det-kpis', [
-    { label: 'Total Clients',         value: filtered.length.toString()            },
-    { label: 'Total Deal Value',      value: fmt(totDV),  cls: 'blue-border'       },
-    { label: 'Invoicing Done',        value: fmt(totInv), cls: 'blue-border'       },
-    { label: '% Invoiced',            value: pct(totInv, totDV)                    },
-    { label: 'Collection Done',       value: fmt(totColl),cls: 'green-border'      },
-    { label: 'Due vs Invoice',        value: fmt(totDue), cls: 'red-border'        },
-    { label: 'Total Due Till Today',  value: fmt(totDueTillDate), cls: 'red-border'},
+    { label: 'Total Clients',           value: filtered.length.toString()                },
+    { label: 'Total Deal Value',        value: fmt(totDV),       cls: 'blue-border'      },
+    { label: 'Invoicing Done',          value: fmt(totInv),      cls: 'blue-border'      },
+    { label: '% Invoiced',             value: pct(totInv, totDV)                         },
+    { label: 'Collection Done',         value: fmt(totColl),     cls: 'green-border'     },
+    { label: 'Due (Gross)',             value: fmt(totDueGross), cls: 'red-border'        },
+    { label: 'Due (Net of Advances)',   value: fmt(totDueNet),   cls: 'orange-border'    },
+    { label: 'Total Due Till Today',    value: fmt(totDueTillDate), cls: 'red-border'    },
   ]);
 
   // ── Client-wise table
