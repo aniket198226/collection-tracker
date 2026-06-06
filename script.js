@@ -513,7 +513,10 @@ function renderOverview(stateFilter) {
   const totDV   = filtered.reduce((s, r) => s + r.dv, 0);
   const totInv  = filtered.reduce((s, r) => s + r.invoice, 0);
   const totColl = filtered.reduce((s, r) => s + r.collected, 0);
-  const totDue  = filtered.reduce((s, r) => s + r.due, 0);
+  // Due = Invoicing − Collection at the aggregate level.
+  // Summing per-school max(0,...) inflates the total when some schools
+  // have over-collected — their surplus should offset other dues.
+  const totDue  = Math.max(0, totInv - totColl);
 
   renderKPIs('overall-kpis', [
     { label: 'Total Deal Value',       value: fmt(totDV),   cls: 'blue-border'  },
@@ -523,21 +526,20 @@ function renderOverview(stateFilter) {
     { label: 'Due Against Invoicing',  value: fmt(totDue),  cls: 'red-border'   },
   ]);
 
-  // Aggregate by state — sum per-school due (already floored at 0) so state rows
-  // and the footer total are computed the same way and always add up correctly.
+  // Aggregate by state — use state-level inv−coll so each row is consistent
+  // with the same formula, and state rows sum to the footer total.
   const byState = {};
   for (const s of filtered) {
-    if (!byState[s.state]) byState[s.state] = { dv: 0, inv: 0, coll: 0, due: 0 };
+    if (!byState[s.state]) byState[s.state] = { dv: 0, inv: 0, coll: 0 };
     byState[s.state].dv   += s.dv;
     byState[s.state].inv  += s.invoice;
     byState[s.state].coll += s.collected;
-    byState[s.state].due  += s.due;  // s.due is already max(0, invoice-collected)
   }
 
   let rows = '';
   for (const st of Object.keys(byState).sort()) {
     const d   = byState[st];
-    const due = d.due;
+    const due = Math.max(0, d.inv - d.coll);
     rows += `<tr>
       <td>${st}</td>
       <td class="num">${fmt(d.dv)}</td>
@@ -677,7 +679,7 @@ function renderDetailed(stateFilter, pocFilter) {
   const totDV   = filtered.reduce((s, r) => s + r.dv, 0);
   const totInv  = filtered.reduce((s, r) => s + r.invoice, 0);
   const totColl = filtered.reduce((s, r) => s + r.collected, 0);
-  const totDue  = filtered.reduce((s, r) => s + r.due, 0);
+  const totDue  = Math.max(0, totInv - totColl); // aggregate: inv − coll
 
   // "Total due till date" = net overdue per school (collected offset applied)
   const totDueTillDate = filtered.reduce((sum, s) => sum + calcNetOverdue(s, today).netDue, 0);
