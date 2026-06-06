@@ -10,7 +10,7 @@
 // ─────────────────────────────────────────────────────────
 // CONFIG  (adjust column numbers here if sheet changes)
 // Column numbers below are 1-indexed Excel positions
-// (i.e., A=1, B=2, … Z=26, AA=27, … BN=66, etc.)
+// (i.e., A=1, B=2, … Z=26, AA=27, … BN=66, BR=70, etc.)
 // ─────────────────────────────────────────────────────────
 const CFG = {
   SHEET_ID: '1gleyDo0eF7z5FITmCp_ozK_E-gdaUxklOY4-WX78CAg',
