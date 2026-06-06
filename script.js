@@ -401,9 +401,9 @@ async function loadRECON() {
     return -1;
   };
 
-  const yearIdx   = findCol('assign to year', 'sale year', 'achievement year', 'ay');
-  const schoolIdx = findCol('sap id', 'school id', 'sap school');
-  const statusIdx = findCol('confirmation from finance', 'status', 'confirmation');
+  const yearIdx   = findCol('assign_acd_year', 'assign_acd', 'acd_year', 'assign to year', 'sale year', 'achievement year');
+  const schoolIdx = findCol('school_code', 'sap id', 'school id', 'sap school');
+  const statusIdx = findCol('confirmation from finance', 'confirmation', 'status');
 
   // Date: column J (0-indexed = 9) — label search first, hard fallback to J
   let dateIdx = findCol('date of deposit', 'deposit date', 'collection date', 'date of credit', 'credit date', 'date');
@@ -415,11 +415,11 @@ async function loadRECON() {
 
   debugLog.push(`Cols → year:${yearIdx} school:${schoolIdx} date:${dateIdx} amount:${amtIdx} status:${statusIdx}`);
 
-  // Preview first 3 raw rows to confirm column mapping
-  for (let ri = 0; ri < Math.min(3, (table.rows||[]).length); ri++) {
+  // Preview first 2 raw rows — show all columns up to 40 to include ASSIGN_ACD_YEAR (idx 34)
+  for (let ri = 0; ri < Math.min(2, (table.rows||[]).length); ri++) {
     const row = table.rows[ri];
     if (!row || !row.c) continue;
-    const cells = (row.c||[]).slice(0,16).map((c,i)=>`[${i}]v=${c?.v??'∅'} f=${c?.f??''}`).join(' | ');
+    const cells = (row.c||[]).slice(0,40).map((c,i)=>`[${i}]v=${c?.v??'∅'}`).join(' | ');
     debugLog.push(`raw row[${ri}]: ${cells}`);
   }
 
