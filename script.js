@@ -382,7 +382,7 @@ async function loadRECON() {
   debugLog.push(`\n✓ OMS Recon New tab fetched — ${table.cols.length} cols, ${(table.rows||[]).length} rows`);
 
   const colLabels = table.cols.map(c => (c.label || c.id || '').trim());
-  debugLog.push(`OMS Recon New column labels: ${colLabels.join(' | ')}`);
+  debugLog.push(`OMS Recon New column labels (all): ${colLabels.map((l,i)=>`[${i}]=${l||'blank'}`).join(' | ')}`);
 
   // ── Discover key columns by header label
   const lbl = colLabels.map(l => l.toLowerCase());
@@ -396,24 +396,30 @@ async function loadRECON() {
 
   const yearIdx   = findCol('assign to year', 'sale year', 'achievement year', 'ay');
   const schoolIdx = findCol('sap id', 'school id', 'sap school');
-  const amtIdx    = findCol('amount');
-  const dateIdx   = findCol('date of deposit', 'deposit date', 'collection date', 'date of credit', 'credit date');
   const statusIdx = findCol('confirmation from finance', 'status', 'confirmation');
+
+  // Date: search labels first; fall back to column J (0-indexed = 9)
+  let dateIdx = findCol('date of deposit', 'deposit date', 'collection date', 'date of credit', 'credit date', 'date');
+  if (dateIdx < 0) { dateIdx = 9; debugLog.push('  dateIdx not found by label → using column J (idx 9) as fallback'); }
+
+  // Amount: search labels first; fall back to column N (0-indexed = 13)
+  let amtIdx = findCol('amount', 'collection amount', 'amt', 'value');
+  if (amtIdx < 0) { amtIdx = 13; debugLog.push('  amtIdx not found by label → using column N (idx 13) as fallback'); }
 
   debugLog.push(`OMS Recon cols → year:${yearIdx} school:${schoolIdx} amount:${amtIdx} date:${dateIdx} status:${statusIdx}`);
 
-  // Log first data row for verification
-  if (table.rows && table.rows.length > 0) {
-    const preview = (table.rows[0].c || []).slice(0, 20).map((c, i) => `[${i}]=${c?.v ?? 'null'}`).join('  ');
-    debugLog.push(`OMS row[0] preview: ${preview}`);
-  }
-
-  if (amtIdx < 0 || dateIdx < 0) {
-    debugLog.push('⚠ OMS Recon New: could not find Amount or Date column — check column labels above');
-    return [];
+  // Log first 3 data rows with J and N highlighted for verification
+  for (let ri = 0; ri < Math.min(3, (table.rows||[]).length); ri++) {
+    const row = table.rows[ri];
+    if (!row || !row.c) continue;
+    const preview = (row.c || []).slice(0, 16).map((c, i) => `[${i}]=${c?.v ?? 'null'}`).join('  ');
+    debugLog.push(`OMS row[${ri}]: ${preview}`);
+    debugLog.push(`  → J(9)=${row.c[9]?.v ?? 'null'} (date?) | N(13)=${row.c[13]?.v ?? 'null'} (amount?)`);
   }
 
   const result = [];
+  let cntYear = 0, cntStatus = 0, cntEmpty = 0;
+
   for (const row of (table.rows || [])) {
     if (!row || !row.c) continue;
 
@@ -423,28 +429,35 @@ async function loadRECON() {
       return v !== null && v !== undefined ? String(v).trim() : '';
     };
 
-    // Filter: AY 26-27 only (skip if year column found and it doesn't match)
+    // Filter: AY 26-27 only (skip if year column found and value doesn't match)
     if (yearIdx >= 0) {
       const saleYear = getCellStr(yearIdx);
-      if (saleYear && !/(26.*27|2026)/.test(saleYear)) continue;
+      if (saleYear && !/(26.*27|2026)/.test(saleYear)) { cntYear++; continue; }
     }
 
-    // Filter: confirmation/status must be "received" (case-insensitive)
+    // Filter: status — accept received / confirmed / credited / yes / done
     if (statusIdx >= 0) {
-      const status = getCellStr(statusIdx);
-      if (!status || status.toLowerCase() !== 'received') continue;
+      const status = getCellStr(statusIdx).toLowerCase();
+      if (status && !['received', 'confirmed', 'yes', 'done', 'credited', 'credit'].includes(status)) {
+        cntStatus++;
+        continue;
+      }
     }
 
     const schoolId = schoolIdx >= 0 ? getCellStr(schoolIdx) : '';
     const collDate = parseDate(parseGvizValue(row.c[dateIdx] || {}));
     const amount   = num(parseGvizValue(row.c[amtIdx] || {}));
 
-    if (!collDate && amount === 0) continue;
+    if (!collDate && amount === 0) { cntEmpty++; continue; }
 
     result.push({ schoolId, collDate, amount });
   }
 
-  debugLog.push(`OMS Recon New rows after filter (26-27 + received): ${result.length}`);
+  debugLog.push(`OMS Recon filter counts → year-filtered:${cntYear} status-filtered:${cntStatus} empty-skipped:${cntEmpty} kept:${result.length}`);
+  if (result.length > 0) {
+    const sample = result.slice(0, 3).map(r => `{id=${r.schoolId} date=${fmtDate(r.collDate)} amt=${r.amount}}`).join(', ');
+    debugLog.push(`OMS Recon sample records: ${sample}`);
+  }
   return result;
 }
 
