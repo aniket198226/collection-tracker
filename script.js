@@ -373,18 +373,25 @@ async function loadAY() {
   return result;
 }
 
+// Convert an Excel date serial (e.g. 45751) to a local JS Date.
+// Excel epoch: Jan 1 1900 (with the leap-year-1900 bug → offset 25569 from Unix epoch).
+function excelSerialToDate(serial) {
+  // Build the date in UTC then re-express as local midnight to avoid timezone shift
+  const utc = new Date((serial - 25569) * 86400000);
+  return new Date(utc.getUTCFullYear(), utc.getUTCMonth(), utc.getUTCDate());
+}
+
 // ─────────────────────────────────────────────────────────
 // LOAD & PROCESS — OMS RECON NEW TAB
 // ─────────────────────────────────────────────────────────
 async function loadRECON() {
   await delay(800);
   const table = await fetchGviz({ sheet: 'OMS Recon New', headers: 1 });
-  debugLog.push(`\n✓ OMS Recon New tab fetched — ${table.cols.length} cols, ${(table.rows||[]).length} rows`);
+  debugLog.push(`\n✓ OMS Recon New — ${table.cols.length} cols, ${(table.rows||[]).length} rows`);
 
   const colLabels = table.cols.map(c => (c.label || c.id || '').trim());
-  debugLog.push(`OMS Recon New column labels (all): ${colLabels.map((l,i)=>`[${i}]=${l||'blank'}`).join(' | ')}`);
+  debugLog.push(`OMS Recon labels: ${colLabels.map((l,i)=>`[${i}]${l||'—'}`).join(' | ')}`);
 
-  // ── Discover key columns by header label
   const lbl = colLabels.map(l => l.toLowerCase());
   const findCol = (...keywords) => {
     for (const kw of keywords) {
@@ -398,23 +405,22 @@ async function loadRECON() {
   const schoolIdx = findCol('sap id', 'school id', 'sap school');
   const statusIdx = findCol('confirmation from finance', 'status', 'confirmation');
 
-  // Date: search labels first; fall back to column J (0-indexed = 9)
+  // Date: column J (0-indexed = 9) — label search first, hard fallback to J
   let dateIdx = findCol('date of deposit', 'deposit date', 'collection date', 'date of credit', 'credit date', 'date');
-  if (dateIdx < 0) { dateIdx = 9; debugLog.push('  dateIdx not found by label → using column J (idx 9) as fallback'); }
+  if (dateIdx < 0) { dateIdx = 9; debugLog.push('  date: label not found → fallback col J (idx 9)'); }
 
-  // Amount: search labels first; fall back to column N (0-indexed = 13)
+  // Amount: column N (0-indexed = 13) — label search first, hard fallback to N
   let amtIdx = findCol('amount', 'collection amount', 'amt', 'value');
-  if (amtIdx < 0) { amtIdx = 13; debugLog.push('  amtIdx not found by label → using column N (idx 13) as fallback'); }
+  if (amtIdx < 0) { amtIdx = 13; debugLog.push('  amount: label not found → fallback col N (idx 13)'); }
 
-  debugLog.push(`OMS Recon cols → year:${yearIdx} school:${schoolIdx} amount:${amtIdx} date:${dateIdx} status:${statusIdx}`);
+  debugLog.push(`Cols → year:${yearIdx} school:${schoolIdx} date:${dateIdx} amount:${amtIdx} status:${statusIdx}`);
 
-  // Log first 3 data rows with J and N highlighted for verification
+  // Preview first 3 raw rows to confirm column mapping
   for (let ri = 0; ri < Math.min(3, (table.rows||[]).length); ri++) {
     const row = table.rows[ri];
     if (!row || !row.c) continue;
-    const preview = (row.c || []).slice(0, 16).map((c, i) => `[${i}]=${c?.v ?? 'null'}`).join('  ');
-    debugLog.push(`OMS row[${ri}]: ${preview}`);
-    debugLog.push(`  → J(9)=${row.c[9]?.v ?? 'null'} (date?) | N(13)=${row.c[13]?.v ?? 'null'} (amount?)`);
+    const cells = (row.c||[]).slice(0,16).map((c,i)=>`[${i}]v=${c?.v??'∅'} f=${c?.f??''}`).join(' | ');
+    debugLog.push(`raw row[${ri}]: ${cells}`);
   }
 
   const result = [];
@@ -429,34 +435,47 @@ async function loadRECON() {
       return v !== null && v !== undefined ? String(v).trim() : '';
     };
 
-    // Filter: AY 26-27 only (skip if year column found and value doesn't match)
+    // Year filter — only when column is identified
     if (yearIdx >= 0) {
-      const saleYear = getCellStr(yearIdx);
-      if (saleYear && !/(26.*27|2026)/.test(saleYear)) { cntYear++; continue; }
+      const yr = getCellStr(yearIdx);
+      if (yr && !/(26.*27|2026|26-27)/.test(yr)) { cntYear++; continue; }
     }
 
-    // Filter: status — accept received / confirmed / credited / yes / done
+    // Status filter — accept received / confirmed / credited / yes / done
     if (statusIdx >= 0) {
-      const status = getCellStr(statusIdx).toLowerCase();
-      if (status && !['received', 'confirmed', 'yes', 'done', 'credited', 'credit'].includes(status)) {
+      const st = getCellStr(statusIdx).toLowerCase();
+      if (st && !['received', 'confirmed', 'yes', 'done', 'credited', 'credit'].includes(st)) {
         cntStatus++;
         continue;
       }
     }
 
     const schoolId = schoolIdx >= 0 ? getCellStr(schoolIdx) : '';
-    const collDate = parseDate(parseGvizValue(row.c[dateIdx] || {}));
-    const amount   = num(parseGvizValue(row.c[amtIdx] || {}));
+
+    // Amount
+    const amount = num(parseGvizValue(row.c[amtIdx] || {}));
+
+    // Date — handle gviz Date objects, string dates, AND raw Excel serials
+    let rawDate = parseGvizValue(row.c[dateIdx] || {});
+    let collDate;
+    if (isDate(rawDate)) {
+      collDate = rawDate;
+    } else if (typeof rawDate === 'number' && rawDate > 40000 && rawDate < 60000) {
+      collDate = excelSerialToDate(rawDate); // Excel serial → local Date
+    } else {
+      collDate = parseDate(rawDate);
+    }
 
     if (!collDate && amount === 0) { cntEmpty++; continue; }
 
     result.push({ schoolId, collDate, amount });
   }
 
-  debugLog.push(`OMS Recon filter counts → year-filtered:${cntYear} status-filtered:${cntStatus} empty-skipped:${cntEmpty} kept:${result.length}`);
+  debugLog.push(`Filter → year:${cntYear} status:${cntStatus} empty:${cntEmpty} kept:${result.length}`);
   if (result.length > 0) {
-    const sample = result.slice(0, 3).map(r => `{id=${r.schoolId} date=${fmtDate(r.collDate)} amt=${r.amount}}`).join(', ');
-    debugLog.push(`OMS Recon sample records: ${sample}`);
+    debugLog.push(`Sample: ${result.slice(0,3).map(r=>`{id=${r.schoolId} dt=${fmtDate(r.collDate)} amt=${r.amount}}`).join(' | ')}`);
+  } else {
+    debugLog.push('⚠ No rows survived filters — check raw row previews above');
   }
   return result;
 }
