@@ -879,13 +879,23 @@ function clearProjectedFilter() {
 // ─────────────────────────────────────────────────────────
 // TAB 3 — RECENT COLLECTIONS (last 7 days from RECON)
 // ─────────────────────────────────────────────────────────
-function renderRecent(stateFilter) {
+function renderRecent(stateFilter, daysBack) {
+  const days       = daysBack || parseInt(document.getElementById('rec-days')?.value) || 30;
   const today      = today0();
   const cutoff     = new Date(today);
-  cutoff.setDate(cutoff.getDate() - 7);
+  cutoff.setDate(cutoff.getDate() - days);
 
   // Build lookup for enriching RECON rows with school info
   const lookup = buildLookup(schools);
+
+  // Debug: show latest few collection dates so user can see what's in the data
+  const sortedDates = recon
+    .filter(r => r.collDate)
+    .map(r => r.collDate)
+    .sort((a, b) => b - a)
+    .slice(0, 5);
+  debugLog.push(`\nRecent tab: window=${days} days (${fmtDate(cutoff)} – ${fmtDate(today)})`);
+  debugLog.push(`Latest RECON dates: ${sortedDates.map(fmtDate).join(', ')}`);
 
   const enriched = recon
     .filter(r => r.collDate && r.collDate >= cutoff && r.collDate <= today)
@@ -911,8 +921,8 @@ function renderRecent(stateFilter) {
   const totAmt = enriched.reduce((s, r) => s + r.amount, 0);
 
   renderKPIs('rec-summary', [
-    { label: 'Collections (7 days)',  value: enriched.length.toString()    },
-    { label: 'Total Amount',          value: fmt(totAmt), cls: 'green-border' },
+    { label: `Collections (last ${days} days)`, value: enriched.length.toString()       },
+    { label: 'Total Amount',                    value: fmt(totAmt), cls: 'green-border' },
   ]);
 
   const rows = enriched.map(r => `<tr>
@@ -930,6 +940,7 @@ function applyRecentFilter()  { renderRecent(getSelected('rec-state-filter')); }
 function clearRecentFilter()  {
   const el = document.getElementById('rec-state-filter');
   [...el.options].forEach(o => { o.selected = o.value === 'ALL'; });
+  document.getElementById('rec-days').value = '30';
   renderRecent([]);
 }
 
@@ -1016,6 +1027,7 @@ async function init() {
     renderOverview([]);
     renderTop10('ALL');
     renderDetailed([], []);
+
     renderPOCReport([], []);
     renderProjected([], [], null, null);
     renderRecent([]);

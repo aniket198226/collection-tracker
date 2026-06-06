@@ -272,7 +272,7 @@
     <section id="tab-recent" class="tab-content">
 
       <div class="section-header">
-        <h2>Recent Collections — Last 7 Days</h2>
+        <h2>Recent Collections</h2>
         <p class="subtitle">Source: RECON tab · AY 26-27 only · Mapped via School ID</p>
         <button class="btn-export" onclick="exportToExcel('recent', 'Recent_Collections')">&#8595; Export to Excel</button>
       </div>
@@ -280,6 +280,14 @@
       <div class="filter-inline" style="margin-bottom:16px">
         <label>Filter States:</label>
         <select id="rec-state-filter" multiple size="5"></select>
+        <label style="margin-left:16px">Last</label>
+        <select id="rec-days" style="width:auto;padding:4px 8px">
+          <option value="7">7 days</option>
+          <option value="15">15 days</option>
+          <option value="30" selected>30 days</option>
+          <option value="60">60 days</option>
+          <option value="90">90 days</option>
+        </select>
         <div class="btn-group">
           <button onclick="applyRecentFilter()">Apply</button>
           <button class="btn-secondary" onclick="clearRecentFilter()">Clear</button>
