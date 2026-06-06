@@ -22,7 +22,7 @@ const CFG = {
     SCHOOL_NAME: 12,  // L  – School Name
     TRUST_NAME:  13,  // M  – Trust / Vendor Name
     STATE:       22,  // V  – State
-    TOTAL_DV:    66,  // BN – Total Deal Value
+    TOTAL_DV:    70,  // BR – School Actual DV
     TOTAL_COLL:  67,  // BO – Total Collection done
     TOTAL_INV:   638, // XN – Total Invoice
     TOTAL_CN:    640, // XP – Total Credit Note (CN)
@@ -273,7 +273,7 @@ async function loadAY() {
     [ay.SCHOOL_NAME]: findByLabel('school name'),
     [ay.TRUST_NAME]:  findByLabel('trust', 'vendor'),
     [ay.STATE]:       findByLabel('state'),
-    [ay.TOTAL_DV]:    findByLabel('total dv', 'deal value'),
+    [ay.TOTAL_DV]:    findByLabel('school actual dv', 'actual dv'),
     [ay.TOTAL_COLL]:  findByLabel('total collection', 'collection done'),
     [ay.TOTAL_INV]:   findByLabel('total invoice'),
     [ay.TOTAL_CN]:    findByLabel('total cn', 'credit note'),
