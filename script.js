@@ -374,35 +374,43 @@ async function loadAY() {
 }
 
 // ─────────────────────────────────────────────────────────
-// LOAD & PROCESS — RECON TAB
+// LOAD & PROCESS — OMS RECON NEW TAB
 // ─────────────────────────────────────────────────────────
 async function loadRECON() {
   await delay(800);
-  const table = await fetchGviz({ sheet: 'RECON', headers: 1 });
-  debugLog.push(`\n✓ RECON tab fetched — ${table.cols.length} cols, ${(table.rows||[]).length} rows`);
+  const table = await fetchGviz({ sheet: 'OMS Recon New', headers: 1 });
+  debugLog.push(`\n✓ OMS Recon New tab fetched — ${table.cols.length} cols, ${(table.rows||[]).length} rows`);
 
   const colLabels = table.cols.map(c => (c.label || c.id || '').trim());
-  debugLog.push(`RECON column labels: ${colLabels.join(' | ')}`);
+  debugLog.push(`OMS Recon New column labels: ${colLabels.join(' | ')}`);
 
-  // Fixed column positions (1-indexed Excel → 0-indexed JS)
-  // Col B (2)  = Sale Year
-  // Col C (3)  = School ID
-  // Col J (10) = Amount collected
-  // Col K (11) = Collection date
-  // Col S (19) = Status (only include rows where value = "received")
-  const yearIdx   = CFG.RECON.SALE_YEAR - 1;  // B → 1
-  const schoolIdx = CFG.RECON.SCHOOL_ID - 1;  // C → 2
-  const amtIdx    = 9;   // J → index 9
-  const dateIdx   = 10;  // K → index 10
-  const statusIdx = 18;  // S → index 18
+  // ── Discover key columns by header label
+  const lbl = colLabels.map(l => l.toLowerCase());
+  const findCol = (...keywords) => {
+    for (const kw of keywords) {
+      const i = lbl.findIndex(l => l.includes(kw.toLowerCase()));
+      if (i >= 0) return i;
+    }
+    return -1;
+  };
 
-  debugLog.push(`RECON fixed cols → year:${yearIdx} school:${schoolIdx} amount(J):${amtIdx} date(K):${dateIdx} status(S):${statusIdx}`);
+  const yearIdx   = findCol('assign to year', 'sale year', 'achievement year', 'ay');
+  const schoolIdx = findCol('sap id', 'school id', 'sap school');
+  const amtIdx    = findCol('amount');
+  const dateIdx   = findCol('date of deposit', 'deposit date', 'collection date', 'date of credit', 'credit date');
+  const statusIdx = findCol('confirmation from finance', 'status', 'confirmation');
+
+  debugLog.push(`OMS Recon cols → year:${yearIdx} school:${schoolIdx} amount:${amtIdx} date:${dateIdx} status:${statusIdx}`);
 
   // Log first data row for verification
   if (table.rows && table.rows.length > 0) {
-    const s = table.rows[0];
-    const preview = (s.c || []).map((c, i) => `[${i}]=${c?.v ?? 'null'}`).join('  ');
-    debugLog.push(`RECON row[0] preview: ${preview}`);
+    const preview = (table.rows[0].c || []).slice(0, 20).map((c, i) => `[${i}]=${c?.v ?? 'null'}`).join('  ');
+    debugLog.push(`OMS row[0] preview: ${preview}`);
+  }
+
+  if (amtIdx < 0 || dateIdx < 0) {
+    debugLog.push('⚠ OMS Recon New: could not find Amount or Date column — check column labels above');
+    return [];
   }
 
   const result = [];
@@ -415,15 +423,19 @@ async function loadRECON() {
       return v !== null && v !== undefined ? String(v).trim() : '';
     };
 
-    // Filter: AY 26-27 only
-    const saleYear = getCellStr(yearIdx);
-    if (saleYear && !/(26.*27|2026)/.test(saleYear)) continue;
+    // Filter: AY 26-27 only (skip if year column found and it doesn't match)
+    if (yearIdx >= 0) {
+      const saleYear = getCellStr(yearIdx);
+      if (saleYear && !/(26.*27|2026)/.test(saleYear)) continue;
+    }
 
-    // Filter: status must be "received" (case-insensitive)
-    const status = getCellStr(statusIdx);
-    if (!status || status.toLowerCase() !== 'received') continue;
+    // Filter: confirmation/status must be "received" (case-insensitive)
+    if (statusIdx >= 0) {
+      const status = getCellStr(statusIdx);
+      if (!status || status.toLowerCase() !== 'received') continue;
+    }
 
-    const schoolId = getCellStr(schoolIdx);
+    const schoolId = schoolIdx >= 0 ? getCellStr(schoolIdx) : '';
     const collDate = parseDate(parseGvizValue(row.c[dateIdx] || {}));
     const amount   = num(parseGvizValue(row.c[amtIdx] || {}));
 
@@ -432,7 +444,7 @@ async function loadRECON() {
     result.push({ schoolId, collDate, amount });
   }
 
-  debugLog.push(`RECON rows after filter (26-27 + received): ${result.length}`);
+  debugLog.push(`OMS Recon New rows after filter (26-27 + received): ${result.length}`);
   return result;
 }
 
