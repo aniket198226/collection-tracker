@@ -53,8 +53,39 @@
       </div>
       <div id="overall-kpis" class="kpi-grid"></div>
 
+      <!-- Zone-wise Summary -->
+      <div class="section-header" style="margin-top:32px">
+        <h2>Zone-wise Summary</h2>
+        <div class="filter-inline">
+          <label>Filter Zones:</label>
+          <select id="ov-zone-filter" multiple size="5"></select>
+          <div class="btn-group">
+            <button onclick="applyOverviewFilter()">Apply</button>
+            <button class="btn-secondary" onclick="clearZoneFilter()">Clear</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table id="zone-table">
+          <thead>
+            <tr>
+              <th>Zone</th>
+              <th class="r">Total DV</th>
+              <th class="r">Invoicing Done</th>
+              <th class="r">% Invoiced</th>
+              <th class="r">Collection Done</th>
+              <th class="r">Due (Gross)</th>
+              <th class="r">Due (Net of Advances)</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+          <tfoot></tfoot>
+        </table>
+      </div>
+
       <!-- State-wise Summary -->
-      <div class="section-header">
+      <div class="section-header" style="margin-top:32px">
         <h2>State-wise Summary</h2>
         <div class="filter-inline">
           <label>Filter States:</label>

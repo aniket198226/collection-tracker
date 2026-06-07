@@ -28,6 +28,7 @@ const CFG = {
     TOTAL_CN:    640, // XP – Total Credit Note (CN)
     // Net Invoicing = TOTAL_INV - TOTAL_CN  (computed at row level)
     // Payment schedule: date+amount pairs, VX–WO (1-indexed 596–613)
+    ZONE:        28,  // AB – Zone / Region
     PAY_START:   596, // VX – first date column
     CORE_END:    605, // WG – last Core column (5 pairs: VX-VY … WF-WG)
     CSR_START:   606, // WH – first CSR column
@@ -207,7 +208,7 @@ async function loadAY() {
   for (let c = ay.PAY_START; c <= ay.PAY_END; c++) payCols.push(c);
 
   const selectedCols = [
-    ay.SAP_ID, ay.SCHOOL_NAME, ay.TRUST_NAME, ay.STATE,
+    ay.SAP_ID, ay.SCHOOL_NAME, ay.TRUST_NAME, ay.STATE, ay.ZONE,
     ay.TOTAL_DV, ay.TOTAL_COLL, ay.TOTAL_INV, ay.TOTAL_CN,
     ...payCols,
     ay.TOTAL_PAY, ay.POC
@@ -277,6 +278,7 @@ async function loadAY() {
     [ay.TOTAL_COLL]:  findByLabel('total collection', 'collection done'),
     [ay.TOTAL_INV]:   findByLabel('total invoice'),
     [ay.TOTAL_CN]:    findByLabel('total cn', 'credit note'),
+    [ay.ZONE]:        findByLabel('zone', 'region'),
     [ay.POC]:         findByLabel('poc', 'collection poc', 'responsible'),
   };
   Object.entries(labelOverrides).forEach(([excCol, idx]) => {
@@ -332,6 +334,7 @@ async function loadAY() {
     const name      = String(getCellVal(row, ay.SCHOOL_NAME) || '').trim();
     const trust     = String(getCellVal(row, ay.TRUST_NAME) || '').trim();
     const state     = String(getCellVal(row, ay.STATE) || '').trim();
+    const zone      = String(getCellVal(row, ay.ZONE) || '').trim();
     const dv        = num(getCellVal(row, ay.TOTAL_DV));
     const collected = num(getCellVal(row, ay.TOTAL_COLL));
     const invoice   = Math.max(0, num(getCellVal(row, ay.TOTAL_INV)) - num(getCellVal(row, ay.TOTAL_CN)));
@@ -361,6 +364,7 @@ async function loadAY() {
 
     result.push({
       sapId, name: displayName, trust, state: state || 'Unknown',
+      zone: zone || 'Unknown',
       dv, collected, invoice, poc: poc || 'Unknown',
       due: Math.max(0, invoice - collected),
       payments
@@ -520,8 +524,9 @@ function unique(arr, key) {
   return [...new Set(arr.map(r => r[key]).filter(Boolean))].sort();
 }
 
-function filterSchools(stateFilter, pocFilter) {
+function filterSchools(stateFilter, pocFilter, zoneFilter = []) {
   let list = schools;
+  if (zoneFilter.length)  list = list.filter(s => zoneFilter.includes(s.zone));
   if (stateFilter.length) list = list.filter(s => stateFilter.includes(s.state));
   if (pocFilter.length)   list = list.filter(s => pocFilter.includes(s.poc));
   return list;
@@ -551,16 +556,13 @@ function setTfoot(tableId, html) {
 // ─────────────────────────────────────────────────────────
 // TAB 1 — STATE OVERVIEW
 // ─────────────────────────────────────────────────────────
-function renderOverview(stateFilter) {
-  const filtered = filterSchools(stateFilter, []);
+function renderOverview(stateFilter, zoneFilter = []) {
+  const filtered = filterSchools(stateFilter, [], zoneFilter);
 
   const totDV        = filtered.reduce((s, r) => s + r.dv, 0);
   const totInv       = filtered.reduce((s, r) => s + r.invoice, 0);
   const totColl      = filtered.reduce((s, r) => s + r.collected, 0);
-  // Gross due: sum of per-school max(0, inv−coll) — advances in one school
-  // do NOT offset dues in another school.
   const totDueGross  = filtered.reduce((s, r) => s + r.due, 0);
-  // Net due: portfolio-level inv−coll — advance/excess collection offsets dues.
   const totDueNet    = Math.max(0, totInv - totColl);
 
   renderKPIs('overall-kpis', [
@@ -572,7 +574,44 @@ function renderOverview(stateFilter) {
     { label: 'Due (Net of Advances)',       value: fmt(totDueNet),    cls: 'orange-border'},
   ]);
 
-  // State rows: show both gross (per-school sum) and net (state-level inv−coll)
+  // Zone-wise rows
+  const byZone = {};
+  for (const s of filtered) {
+    const z = s.zone || 'Unknown';
+    if (!byZone[z]) byZone[z] = { dv: 0, inv: 0, coll: 0, dueGross: 0 };
+    byZone[z].dv       += s.dv;
+    byZone[z].inv      += s.invoice;
+    byZone[z].coll     += s.collected;
+    byZone[z].dueGross += s.due;
+  }
+
+  let zoneRows = '';
+  for (const zn of Object.keys(byZone).sort()) {
+    const d = byZone[zn];
+    const dueNet = Math.max(0, d.inv - d.coll);
+    zoneRows += `<tr>
+      <td>${zn}</td>
+      <td class="num">${fmt(d.dv)}</td>
+      <td class="num">${fmt(d.inv)}</td>
+      <td class="num">${pct(d.inv, d.dv)}</td>
+      <td class="num pos">${fmt(d.coll)}</td>
+      <td class="due">${fmt(d.dueGross)}</td>
+      <td class="due">${fmt(dueNet)}</td>
+    </tr>`;
+  }
+
+  setTbody('zone-table', zoneRows);
+  setTfoot('zone-table', `<tr>
+    <td><strong>Total</strong></td>
+    <td class="num"><strong>${fmt(totDV)}</strong></td>
+    <td class="num"><strong>${fmt(totInv)}</strong></td>
+    <td class="num"><strong>${pct(totInv, totDV)}</strong></td>
+    <td class="num pos"><strong>${fmt(totColl)}</strong></td>
+    <td class="due"><strong>${fmt(totDueGross)}</strong></td>
+    <td class="due"><strong>${fmt(totDueNet)}</strong></td>
+  </tr>`);
+
+  // State-wise rows: show both gross (per-school sum) and net (state-level inv−coll)
   const byState = {};
   for (const s of filtered) {
     if (!byState[s.state]) byState[s.state] = { dv: 0, inv: 0, coll: 0, dueGross: 0 };
@@ -610,15 +649,22 @@ function renderOverview(stateFilter) {
 }
 
 function applyOverviewFilter() {
-  renderOverview(getSelected('ov-state-filter'));
+  renderOverview(getSelected('ov-state-filter'), getSelected('ov-zone-filter'));
   renderTop10(document.getElementById('top10-state-filter').value);
 }
 
 function clearOverviewFilter() {
   const sel = document.getElementById('ov-state-filter');
   [...sel.options].forEach(o => { o.selected = o.value === 'ALL'; });
-  renderOverview([]);
+  renderOverview([], getSelected('ov-zone-filter'));
   renderTop10('ALL');
+}
+
+function clearZoneFilter() {
+  const sel = document.getElementById('ov-zone-filter');
+  [...sel.options].forEach(o => { o.selected = o.value === 'ALL'; });
+  renderOverview(getSelected('ov-state-filter'), []);
+  renderTop10(document.getElementById('top10-state-filter').value);
 }
 
 // ─────────────────────────────────────────────────────────
@@ -1038,8 +1084,10 @@ async function init() {
 
     // Populate all filter dropdowns
     const states = unique(schools, 'state');
+    const zones  = unique(schools, 'zone');
     const pocs   = unique(schools, 'poc');
 
+    populateSelect('ov-zone-filter', zones);
     populateSelect('ov-state-filter', states);
     populateSelect('top10-state-filter', states);
     populateSelect('det-state', states);
