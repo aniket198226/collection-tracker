@@ -29,6 +29,9 @@ const CFG = {
     // Net Invoicing = TOTAL_INV - TOTAL_CN  (computed at row level)
     // Payment schedule: date+amount pairs, VX–WO (1-indexed 596–613)
     ZONE:        28,  // AB – Zone / Region
+    PRODUCT:     73,  // BU – Product type(s)
+    PROD_VAR1:   74,  // BV – Variant for Core / Mini / Mini WB
+    PROD_VAR2:   75,  // BW – Variant for CSR / CSR kits only
     PAY_START:   596, // VX – first date column
     CORE_END:    605, // WG – last Core column (5 pairs: VX-VY … WF-WG)
     CSR_START:   606, // WH – first CSR column
@@ -200,6 +203,28 @@ function selectTQ(colNums) {
 function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ─────────────────────────────────────────────────────────
+// PRODUCT COMBO PARSER
+// BU = product(s) joined by " - ", BV = variant for Core/Mini/Mini WB,
+// BW = variant for CSR/CSR kits only.  Returns array of labelled combos.
+// ─────────────────────────────────────────────────────────
+function parseProductCombos(productRaw, var1, var2) {
+  if (!productRaw) return [];
+  const combos = [];
+  const parts = productRaw.split(' - ').map(p => p.trim()).filter(Boolean);
+  for (const p of parts) {
+    const pl = p.toLowerCase();
+    if (pl.includes('mini wb'))      combos.push(var1 ? `Mini WB ${var1}`       : 'Mini WB');
+    else if (pl.includes('csr kit')) combos.push(var2 ? `CSR Kits Only ${var2}` : 'CSR Kits Only');
+    else if (pl.includes('csr'))     combos.push(var2 ? `CSR ${var2}`            : 'CSR');
+    else if (pl.includes('core'))    combos.push(var1 ? `Core ${var1}`           : 'Core');
+    else if (pl.includes('opt'))     combos.push('Optional');
+    else if (pl.includes('mini'))    combos.push(var1 ? `Mini ${var1}`           : 'Mini');
+    else if (p)                      combos.push(p);
+  }
+  return combos;
+}
+
+// ─────────────────────────────────────────────────────────
 // LOAD & PROCESS — AY 26-27 TAB
 // ─────────────────────────────────────────────────────────
 async function loadAY() {
@@ -210,6 +235,7 @@ async function loadAY() {
   const selectedCols = [
     ay.SAP_ID, ay.SCHOOL_NAME, ay.TRUST_NAME, ay.STATE, ay.ZONE,
     ay.TOTAL_DV, ay.TOTAL_COLL, ay.TOTAL_INV, ay.TOTAL_CN,
+    ay.PRODUCT, ay.PROD_VAR1, ay.PROD_VAR2,
     ...payCols,
     ay.TOTAL_PAY, ay.POC
   ];
@@ -279,6 +305,9 @@ async function loadAY() {
     [ay.TOTAL_INV]:   findByLabel('total invoice'),
     [ay.TOTAL_CN]:    findByLabel('total cn', 'credit note'),
     [ay.ZONE]:        findByLabel('zone', 'region'),
+    [ay.PRODUCT]:     findByLabel('product', 'product type'),
+    [ay.PROD_VAR1]:   findByLabel('variant bv', 'core variant', 'mini variant', 'product variant'),
+    [ay.PROD_VAR2]:   findByLabel('csr variant', 'csr kits variant', 'variant bw'),
     [ay.POC]:         findByLabel('poc', 'collection poc', 'responsible'),
   };
   Object.entries(labelOverrides).forEach(([excCol, idx]) => {
@@ -335,6 +364,9 @@ async function loadAY() {
     const trust     = String(getCellVal(row, ay.TRUST_NAME) || '').trim();
     const state     = String(getCellVal(row, ay.STATE) || '').trim();
     const zone      = String(getCellVal(row, ay.ZONE) || '').trim();
+    const productRaw = String(getCellVal(row, ay.PRODUCT)   || '').trim();
+    const var1       = String(getCellVal(row, ay.PROD_VAR1) || '').trim();
+    const var2       = String(getCellVal(row, ay.PROD_VAR2) || '').trim();
     const dv        = num(getCellVal(row, ay.TOTAL_DV));
     const collected = num(getCellVal(row, ay.TOTAL_COLL));
     const invoice   = Math.max(0, num(getCellVal(row, ay.TOTAL_INV)) - num(getCellVal(row, ay.TOTAL_CN)));
@@ -367,7 +399,8 @@ async function loadAY() {
       zone: zone || 'Unknown',
       dv, collected, invoice, poc: poc || 'Unknown',
       due: Math.max(0, invoice - collected),
-      payments
+      payments,
+      productCombos: parseProductCombos(productRaw, var1, var2)
     });
   }
 
@@ -1035,6 +1068,69 @@ function clearRecentFilter()  {
 }
 
 // ─────────────────────────────────────────────────────────
+// TAB 6 — BUSINESS OVERVIEW
+// ─────────────────────────────────────────────────────────
+function renderBusiness(stateFilter) {
+  // Overall section always covers all schools (no state filter)
+  const overallCounts = {};
+  let totalWithProducts = 0;
+  for (const s of schools) {
+    if (!s.productCombos || s.productCombos.length === 0) continue;
+    totalWithProducts++;
+    for (const combo of s.productCombos) {
+      overallCounts[combo] = (overallCounts[combo] || 0) + 1;
+    }
+  }
+
+  renderKPIs('biz-kpis', [
+    { label: 'Total Schools',         value: schools.length.toString()          },
+    { label: 'Schools with Products', value: totalWithProducts.toString(),       cls: 'blue-border'  },
+    { label: 'Unique Product Combos', value: Object.keys(overallCounts).length.toString(), cls: 'green-border' },
+  ]);
+
+  const sortedCombos = Object.keys(overallCounts).sort();
+  const overallRows  = sortedCombos.map(c => `<tr>
+    <td>${c}</td>
+    <td class="num">${overallCounts[c]}</td>
+  </tr>`).join('');
+  setTbody('biz-overall-table', overallRows);
+  setTfoot('biz-overall-table', `<tr>
+    <td><strong>Total</strong></td>
+    <td class="num"><strong>${sortedCombos.reduce((s, c) => s + overallCounts[c], 0)}</strong></td>
+  </tr>`);
+
+  // State section — filtered by selected states
+  const stateFiltered = filterSchools(stateFilter, []);
+  const stateCounts   = {};
+  for (const s of stateFiltered) {
+    if (!s.productCombos || s.productCombos.length === 0) continue;
+    if (!stateCounts[s.state]) stateCounts[s.state] = {};
+    for (const combo of s.productCombos) {
+      stateCounts[s.state][combo] = (stateCounts[s.state][combo] || 0) + 1;
+    }
+  }
+
+  let stateRows = '';
+  for (const state of Object.keys(stateCounts).sort()) {
+    for (const combo of Object.keys(stateCounts[state]).sort()) {
+      stateRows += `<tr>
+        <td>${state}</td>
+        <td>${combo}</td>
+        <td class="num">${stateCounts[state][combo]}</td>
+      </tr>`;
+    }
+  }
+  setTbody('biz-state-table', stateRows);
+}
+
+function applyBizFilter() { renderBusiness(getSelected('biz-state-filter')); }
+function clearBizFilter()  {
+  const sel = document.getElementById('biz-state-filter');
+  [...sel.options].forEach(o => { o.selected = o.value === 'ALL'; });
+  renderBusiness([]);
+}
+
+// ─────────────────────────────────────────────────────────
 // DEBUG PANEL
 // ─────────────────────────────────────────────────────────
 function toggleDebug() {
@@ -1097,6 +1193,7 @@ async function init() {
     populateSelect('proj-state', states);
     populateSelect('proj-poc', pocs);
     populateSelect('rec-state-filter', states);
+    populateSelect('biz-state-filter', states);
 
     // Projected Collections — restrict date pickers to future dates only
     const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
@@ -1123,6 +1220,7 @@ async function init() {
     renderPOCReport([], []);
     renderProjected([], [], null, null);
     renderRecent([]);
+    renderBusiness([]);
 
     document.getElementById('last-updated').textContent =
       'Last updated: ' + new Date().toLocaleString('en-IN');

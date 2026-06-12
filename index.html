@@ -41,6 +41,7 @@
       <button class="tab-btn" data-tab="poc">POC wise Report</button>
       <button class="tab-btn" data-tab="projected">Projected Collections</button>
       <button class="tab-btn" data-tab="recent">Recent Collections</button>
+      <button class="tab-btn" data-tab="business">Business Overview</button>
     </nav>
 
     <!-- ==================== TAB 1: STATE OVERVIEW ==================== -->
@@ -336,6 +337,63 @@
               <th>State</th>
               <th>POC</th>
               <th class="r">Amount Collected</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+    </section>
+
+    <!-- ==================== TAB 6: BUSINESS OVERVIEW ==================== -->
+    <section id="tab-business" class="tab-content">
+
+      <div class="section-header">
+        <h2>Business Overview</h2>
+        <p class="subtitle">Product mix across AY 26-27 portfolio · Source: AY tab columns BU / BV / BW</p>
+        <button class="btn-export" onclick="exportToExcel('business', 'Business_Overview')">&#8595; Export to Excel</button>
+      </div>
+
+      <div id="biz-kpis" class="kpi-grid"></div>
+
+      <!-- Overall -->
+      <div class="section-header" style="margin-top:8px">
+        <h3>Overall — Schools by Product</h3>
+      </div>
+
+      <div class="table-wrap">
+        <table id="biz-overall-table">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th class="r"># Schools</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+          <tfoot></tfoot>
+        </table>
+      </div>
+
+      <!-- State-wise -->
+      <div class="section-header" style="margin-top:32px">
+        <h3>State-wise — Schools by Product</h3>
+        <div class="filter-inline">
+          <label>Filter States:</label>
+          <select id="biz-state-filter" multiple size="5"></select>
+          <div class="btn-group">
+            <button onclick="applyBizFilter()">Apply</button>
+            <button class="btn-secondary" onclick="clearBizFilter()">Clear</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table id="biz-state-table">
+          <thead>
+            <tr>
+              <th>State</th>
+              <th>Product</th>
+              <th class="r"># Schools</th>
             </tr>
           </thead>
           <tbody></tbody>
